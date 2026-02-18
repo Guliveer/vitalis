@@ -22,6 +22,8 @@ Vitalis is a production-grade monitoring platform designed for individuals and s
 ### Key Features
 
 - **Lightweight Go Agent** — < 50 MB RAM, < 2% CPU, single binary with zero dependencies
+- **Embedded Configuration** — Config is baked into the binary at build time; no external files needed
+- **Auto-Install as Service** — Binary auto-registers as a system service on first run (Windows Service, systemd, launchd)
 - **Real-Time Dashboard** — CPU, RAM, disk, network charts with live process tables
 - **Offline Resilience** — Local SQLite buffer survives reboots and network outages
 - **Multi-Resolution Data** — Raw (7 days), hourly (30 days), and daily (1 year) retention
@@ -90,7 +92,7 @@ For the full architecture document including database schema, security threat mo
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/vitalis.git
+git clone https://github.com/Guliveer/vitalis.git
 cd vitalis
 ```
 
@@ -136,53 +138,40 @@ npm run dev
 
 The dashboard is now running at `http://localhost:3000`.
 
-### 5. Build the Agent
+### 5. Configure the Agent
 
-The project includes build scripts that handle cross-compilation, version embedding, and output organization:
-
-```bash
-# Build for your current platform
-./build.sh
-
-# Build for all supported platforms with a version tag
-./build.sh --all --version 1.0.0
-
-# Cross-compile for a specific platform
-./build.sh --platform windows/amd64
-
-# Windows users (PowerShell)
-.\build.ps1 -All -Version "1.0.0"
-```
-
-Binaries are output to the `build/` directory. See [Building](#building) for full details.
-
-### 6. Configure and Run the Agent
-
-Edit [`agent/configs/agent.yaml`](agent/configs/agent.yaml):
+Edit [`agent/configs/agent.yaml`](agent/configs/agent.yaml) with your server URL and machine token:
 
 ```yaml
 server:
   url: "http://localhost:3000"
   machine_token: "your-machine-token"
-
-collection:
-  interval: "15s"
-  batch_interval: "30s"
-  top_processes: 10
-
-buffer:
-  max_size_mb: 50
-  db_path: "./buffer"
-
-logging:
-  level: "info"
-  file: "./agent.log"
 ```
 
-Run the agent:
+### 6. Build and Run the Agent
+
+The build scripts embed the selected configuration into the binary and handle cross-compilation:
 
 ```bash
-./build/vitalis-agent --config ./agent/configs/agent.yaml
+# Build for your current platform (interactive config selection)
+./build.sh
+
+# Build with a specific config
+./build.sh --config agent
+
+# Build for all supported platforms with a version tag
+./build.sh --all --config agent --version 1.0.0
+
+# Windows users (PowerShell)
+.\build.ps1 -Config "agent" -All -Version "1.0.0"
+```
+
+Binaries are output to the `build/` directory. See [Building](#building) for full details.
+
+Run the agent (it auto-installs as a system service on first run):
+
+```bash
+./build/vitalis-agent
 ```
 
 ### 7. Register Your First User
@@ -197,12 +186,18 @@ Run the agent:
 
 ## Building
 
-Vitalis includes cross-platform build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows) that simplify agent compilation.
+Vitalis includes cross-platform build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows) that handle **config embedding**, compilation, version embedding, and output organization.
+
+The build scripts select a configuration from [`agent/configs/`](agent/configs/) and embed it into the binary using Go's `//go:embed` directive. Each binary is self-contained — no external config file is needed at runtime.
 
 ### Build for Current Platform
 
 ```bash
+# Interactive config selection
 ./build.sh
+
+# Or specify a config directly
+./build.sh --config agent_z370m
 ```
 
 This compiles the agent for your current OS and architecture, outputting the binary to `build/vitalis-agent`.
@@ -210,7 +205,7 @@ This compiles the agent for your current OS and architecture, outputting the bin
 ### Build All Platforms
 
 ```bash
-./build.sh --all --version 1.0.0
+./build.sh --all --config agent_z370m --version 1.0.0
 ```
 
 Produces binaries for all supported platforms:
@@ -225,20 +220,23 @@ Produces binaries for all supported platforms:
 ### Cross-Compile for a Specific Platform
 
 ```bash
-./build.sh --platform windows/amd64
+./build.sh --platform windows/amd64 --config agent_z370m
 ```
 
 ### Windows Users (PowerShell)
 
 ```powershell
-# Build for current platform
+# Build for current platform (interactive config)
 .\build.ps1
 
+# Build with specific config
+.\build.ps1 -Config "agent_z370m"
+
 # Build all platforms with version
-.\build.ps1 -All -Version "1.0.0"
+.\build.ps1 -Config "agent_z370m" -All -Version "1.0.0"
 
 # Cross-compile for a specific platform
-.\build.ps1 -Platform "linux/amd64"
+.\build.ps1 -Config "agent_z370m" -Platform "linux/amd64"
 
 # Clean build artifacts
 .\build.ps1 -Clean
@@ -257,8 +255,15 @@ Produces binaries for all supported platforms:
 ```
 vitalis/
 ├── agent/                          # Go monitoring agent
-│   ├── cmd/agent/main.go           # Entry point, CLI flags, service registration
+│   ├── cmd/agent/
+│   │   ├── main.go                 # Entry point, CLI flags, autostart logic
+│   │   ├── embed.go                # go:embed directive for config embedding
+│   │   └── embed_config.yaml       # Staging file (gitignored, generated by build)
+│   ├── configs/                    # Machine-specific YAML configs (selected at build time)
+│   │   ├── agent.yaml              # Default / template configuration
+│   │   └── agent_z370m.yaml        # Example machine-specific config
 │   ├── internal/
+│   │   ├── autostart/              # Cross-platform service auto-installation
 │   │   ├── collector/              # Metric collectors (CPU, RAM, disk, etc.)
 │   │   ├── scheduler/              # Tick-based collection scheduler
 │   │   ├── buffer/                 # SQLite-backed offline buffer
@@ -267,7 +272,6 @@ vitalis/
 │   │   ├── service/                # Windows service integration
 │   │   ├── platform/               # OS abstraction layer
 │   │   └── models/                 # Shared data types
-│   ├── configs/agent.yaml          # Example configuration
 │   ├── go.mod
 │   └── go.sum
 ├── web/                            # Next.js 14 web application

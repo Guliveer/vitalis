@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/vitalis-app/agent/internal/autostart"
 	"github.com/vitalis-app/agent/internal/buffer"
 	"github.com/vitalis-app/agent/internal/collector"
 	"github.com/vitalis-app/agent/internal/config"
@@ -27,8 +28,9 @@ var (
 	// version is set at build time via -ldflags.
 	version = "dev"
 
-	configPath  = flag.String("config", "agent.yaml", "Path to configuration file")
 	showVersion = flag.Bool("version", false, "Show version and exit")
+	install     = flag.Bool("install", false, "Install autostart entry and exit")
+	uninstall   = flag.Bool("uninstall", false, "Remove autostart entry and exit")
 )
 
 func main() {
@@ -39,8 +41,35 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Load configuration
-	cfg, err := config.Load(*configPath)
+	// Handle --install: register as a system service and exit.
+	if *install {
+		mgr := autostart.New()
+		execPath, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Install failed: cannot determine executable path: %v\n", err)
+			os.Exit(1)
+		}
+		if err := mgr.Install(execPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Install failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Installed as system service (%s).\n", mgr.ServiceName())
+		os.Exit(0)
+	}
+
+	// Handle --uninstall: remove the system service and exit.
+	if *uninstall {
+		mgr := autostart.New()
+		if err := mgr.Uninstall(); err != nil {
+			fmt.Fprintf(os.Stderr, "Uninstall failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Uninstalled system service (%s).\n", mgr.ServiceName())
+		os.Exit(0)
+	}
+
+	// Load embedded configuration
+	cfg, err := config.LoadFromBytes(embeddedConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -57,6 +86,30 @@ func main() {
 	// Validate configuration (includes URL, token, and HTTPS enforcement)
 	if err := cfg.Validate(); err != nil {
 		logger.Fatal("Invalid configuration", zap.Error(err))
+	}
+
+	// Auto-install as system service on first run.
+	// Failures are logged but do not prevent the agent from running.
+	mgr := autostart.New()
+	installed, err := mgr.IsInstalled()
+	if err != nil {
+		logger.Warn("Could not check autostart status", zap.Error(err))
+	}
+	if !installed {
+		execPath, err := os.Executable()
+		if err != nil {
+			logger.Warn("Auto-install skipped: cannot determine executable path",
+				zap.Error(err))
+		} else if err := mgr.Install(execPath); err != nil {
+			logger.Warn("Auto-install failed (may need elevated privileges)",
+				zap.Error(err))
+		} else {
+			logger.Info("Auto-installed as system service",
+				zap.String("service", mgr.ServiceName()))
+		}
+	} else {
+		logger.Debug("Service already registered",
+			zap.String("service", mgr.ServiceName()))
 	}
 
 	// Check if running as Windows service

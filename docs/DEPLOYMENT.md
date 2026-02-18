@@ -10,11 +10,10 @@ Step-by-step instructions for deploying Vitalis to production using **Neon** (da
 2. [Database Setup (Neon)](#2-database-setup-neon)
 3. [Web App Deployment (Vercel)](#3-web-app-deployment-vercel)
 4. [Agent Build & Distribution](#4-agent-build--distribution)
-5. [Agent Installation (Windows)](#5-agent-installation-windows)
-6. [Agent Installation (Linux / macOS)](#6-agent-installation-linux--macos)
-7. [First-Time Setup Flow](#7-first-time-setup-flow)
-8. [Environment Variables Reference](#8-environment-variables-reference)
-9. [Troubleshooting](#9-troubleshooting)
+5. [Agent Deployment](#5-agent-deployment)
+6. [First-Time Setup Flow](#6-first-time-setup-flow)
+7. [Environment Variables Reference](#7-environment-variables-reference)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -154,157 +153,23 @@ Open your deployment URL and verify:
 
 ## 4. Agent Build & Distribution
 
-Build the agent binary from the [`agent/`](agent/) directory using the provided build scripts.
+The agent binary is **self-contained** — configuration is embedded at build time, so there is no need to distribute a separate config file alongside the binary.
 
-### Using Build Scripts (Recommended)
+### Build with Embedded Config
 
-The project includes cross-platform build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows):
+The build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows) select a configuration from [`agent/configs/`](agent/configs/) and embed it into the binary.
 
-#### Build for Current Platform
+#### Step 1: Create a Config for the Target Machine
 
-```bash
-./build.sh
-```
-
-#### Build All Platforms
+If one doesn't already exist, create a config file in `agent/configs/`:
 
 ```bash
-./build.sh --all --version 1.0.0
+cp agent/configs/agent.yaml agent/configs/agent_myserver.yaml
 ```
 
-#### Cross-Compile for a Specific Platform
-
-```bash
-# Windows
-./build.sh --platform windows/amd64
-
-# Linux
-./build.sh --platform linux/amd64
-
-# macOS (Apple Silicon)
-./build.sh --platform darwin/arm64
-
-# macOS (Intel)
-./build.sh --platform darwin/amd64
-```
-
-#### Windows Users (PowerShell)
-
-```powershell
-.\build.ps1 -All -Version "1.0.0"
-```
-
-Binaries are output to the `build/` directory with platform-specific naming (e.g., `vitalis-agent-windows-amd64.exe`, `vitalis-agent-linux-amd64`).
-
-### Versioned Build
-
-The build scripts automatically embed the version string. Verify with:
-
-```bash
-./build/vitalis-agent --version
-# Output: vitalis-agent 1.0.0
-```
-
----
-
-## 5. Agent Installation (Windows)
-
-### 5.1 Create Installation Directory
-
-```powershell
-mkdir "C:\Program Files\Vitalis"
-```
-
-### 5.2 Copy Files
-
-Copy the built binary and create a configuration file:
-
-```powershell
-copy build\vitalis-agent-windows-amd64.exe "C:\Program Files\Vitalis\vitalis-agent.exe"
-```
-
-### 5.3 Create Configuration
-
-Create `C:\Program Files\Vitalis\agent.yaml`:
+Edit it with the target machine's settings:
 
 ```yaml
-server:
-  url: "https://your-project.vercel.app"
-  machine_token: "mtoken_your-machine-token-here"
-
-collection:
-  interval: "15s"
-  batch_interval: "30s"
-  top_processes: 10
-
-buffer:
-  max_size_mb: 50
-  db_path: "C:\\ProgramData\\Vitalis\\buffer"
-
-logging:
-  level: "info"
-  file: "C:\\ProgramData\\Vitalis\\agent.log"
-```
-
-Create the data directory:
-
-```powershell
-mkdir "C:\ProgramData\Vitalis"
-```
-
-### 5.4 Install as Windows Service
-
-```powershell
-sc create VitalisAgent ^
-  binPath= "\"C:\Program Files\Vitalis\vitalis-agent.exe\" --config \"C:\Program Files\Vitalis\agent.yaml\"" ^
-  start= auto ^
-  DisplayName= "Vitalis Agent"
-```
-
-### 5.5 Start the Service
-
-```powershell
-sc start VitalisAgent
-```
-
-### 5.6 Verify
-
-- Check the service status: `sc query VitalisAgent`
-- View logs: Open **Event Viewer → Windows Logs → Application** and filter by source `VitalisAgent`
-- Check the log file: `type "C:\ProgramData\Vitalis\agent.log"`
-- Verify in the dashboard: the machine should appear as **Online**
-
-### 5.7 Service Management
-
-```powershell
-# Stop the service
-sc stop VitalisAgent
-
-# Restart the service
-sc stop VitalisAgent && sc start VitalisAgent
-
-# Remove the service
-sc stop VitalisAgent
-sc delete VitalisAgent
-```
-
----
-
-## 6. Agent Installation (Linux / macOS)
-
-### 6.1 Copy Files
-
-```bash
-sudo mkdir -p /opt/vitalis
-sudo cp build/vitalis-agent-linux-amd64 /opt/vitalis/vitalis-agent
-sudo chmod +x /opt/vitalis/vitalis-agent
-```
-
-### 6.2 Create Configuration
-
-```bash
-sudo mkdir -p /etc/vitalis
-sudo tee /etc/vitalis/agent.yaml > /dev/null << 'EOF'
 server:
   url: "https://your-project.vercel.app"
   machine_token: "mtoken_your-machine-token-here"
@@ -321,107 +186,213 @@ buffer:
 logging:
   level: "info"
   file: "/var/log/vitalis/agent.log"
-EOF
 ```
 
-Create data directories:
+#### Step 2: Build with the Config
 
 ```bash
-sudo mkdir -p /var/lib/vitalis
-sudo mkdir -p /var/log/vitalis
+# Build for current platform with a specific config
+./build.sh --config agent_myserver --version 1.0.0
+
+# Build for all platforms
+./build.sh --all --config agent_myserver --version 1.0.0
+
+# Cross-compile for a specific platform
+./build.sh --platform windows/amd64 --config agent_myserver
+
+# Interactive config selection (omit --config)
+./build.sh --version 1.0.0
 ```
 
-### 6.3 Linux — systemd Service
+#### Windows Users (PowerShell)
 
-Create `/etc/systemd/system/vitalis-agent.service`:
-
-```ini
-[Unit]
-Description=Vitalis Monitoring Agent
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/opt/vitalis/vitalis-agent --config /etc/vitalis/agent.yaml
-Restart=always
-RestartSec=10
-User=root
-
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/vitalis /var/log/vitalis
-
-[Install]
-WantedBy=multi-user.target
+```powershell
+.\build.ps1 -Config "agent_myserver" -All -Version "1.0.0"
 ```
 
-Enable and start:
+Binaries are output to the `build/` directory with platform-specific naming (e.g., `vitalis-agent-windows-amd64.exe`, `vitalis-agent-linux-amd64`).
+
+### Versioned Build
+
+The build scripts automatically embed the version string. Verify with:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable vitalis-agent
-sudo systemctl start vitalis-agent
-```
-
-Check status:
-
-```bash
-sudo systemctl status vitalis-agent
-sudo journalctl -u vitalis-agent -f
-```
-
-### 6.4 macOS — launchd Service
-
-Create `~/Library/LaunchAgents/com.vitalis.agent.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.vitalis.agent</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/opt/vitalis/vitalis-agent</string>
-        <string>--config</string>
-        <string>/etc/vitalis/agent.yaml</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/var/log/vitalis/stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/var/log/vitalis/stderr.log</string>
-</dict>
-</plist>
-```
-
-Load and start:
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.vitalis.agent.plist
-```
-
-Check status:
-
-```bash
-launchctl list | grep vitalis
-```
-
-Stop and unload:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.vitalis.agent.plist
+./build/vitalis-agent --version
+# Output: vitalis-agent 1.0.0
 ```
 
 ---
 
-## 7. First-Time Setup Flow
+## 5. Agent Deployment
+
+Deployment is simplified to a single step: **copy the binary and run it**. The agent automatically registers itself as a system service on first run.
+
+### Deployment Overview
+
+| Step | Before (old workflow)                  | After (new workflow)                      |
+| ---- | -------------------------------------- | ----------------------------------------- |
+| 1    | Copy binary to target machine          | Copy binary to target machine             |
+| 2    | Copy config file to target machine     | Run the binary                            |
+| 3    | Edit config with correct machine token | _(done — agent auto-installs as service)_ |
+| 4    | Install as service manually            | —                                         |
+| 5    | Start the service                      | —                                         |
+
+### 5.1 Windows Deployment
+
+```powershell
+# Copy the binary to the target machine
+copy vitalis-agent-windows-amd64.exe "C:\Program Files\Vitalis\vitalis-agent.exe"
+
+# Run it (auto-installs as Windows Service "VitalisAgent")
+& "C:\Program Files\Vitalis\vitalis-agent.exe"
+```
+
+On first run, the agent:
+
+1. Loads the embedded configuration
+2. Detects it is not registered as a Windows Service
+3. Registers itself as `VitalisAgent` with automatic startup
+4. Begins collecting and sending metrics
+
+#### Verify
+
+```powershell
+sc query VitalisAgent                    # Check service status
+Get-EventLog -LogName Application -Source VitalisAgent -Newest 10  # View logs
+```
+
+#### Service Management
+
+```powershell
+sc stop VitalisAgent                     # Stop
+sc start VitalisAgent                    # Start
+sc stop VitalisAgent && sc start VitalisAgent  # Restart
+```
+
+#### Uninstall
+
+```powershell
+& "C:\Program Files\Vitalis\vitalis-agent.exe" --uninstall
+```
+
+### 5.2 Linux Deployment
+
+```bash
+# Copy the binary to the target machine
+sudo mkdir -p /opt/vitalis
+sudo cp vitalis-agent-linux-amd64 /opt/vitalis/vitalis-agent
+sudo chmod +x /opt/vitalis/vitalis-agent
+
+# Run it (auto-installs as systemd service "vitalis-agent")
+sudo /opt/vitalis/vitalis-agent
+```
+
+On first run, the agent:
+
+1. Loads the embedded configuration
+2. Detects it is not registered as a systemd service
+3. Writes a unit file to `/etc/systemd/system/vitalis-agent.service`
+4. Enables and starts the service
+5. Begins collecting and sending metrics
+
+#### Verify
+
+```bash
+sudo systemctl status vitalis-agent      # Check service status
+sudo journalctl -u vitalis-agent -f      # View logs
+```
+
+#### Service Management
+
+```bash
+sudo systemctl stop vitalis-agent        # Stop
+sudo systemctl start vitalis-agent       # Start
+sudo systemctl restart vitalis-agent     # Restart
+```
+
+#### Uninstall
+
+```bash
+sudo /opt/vitalis/vitalis-agent --uninstall
+```
+
+### 5.3 macOS Deployment
+
+```bash
+# Copy the binary to the target machine
+sudo mkdir -p /opt/vitalis
+sudo cp vitalis-agent-darwin-arm64 /opt/vitalis/vitalis-agent
+sudo chmod +x /opt/vitalis/vitalis-agent
+
+# Run it (auto-installs as launchd daemon "com.vitalis.agent")
+sudo /opt/vitalis/vitalis-agent
+```
+
+On first run, the agent:
+
+1. Loads the embedded configuration
+2. Detects it is not registered as a launchd daemon
+3. Writes a plist to `/Library/LaunchDaemons/com.vitalis.agent.plist`
+4. Loads the daemon
+5. Begins collecting and sending metrics
+
+#### Verify
+
+```bash
+launchctl list | grep vitalis            # Check daemon status
+cat /var/log/vitalis/stdout.log          # View logs
+```
+
+#### Uninstall
+
+```bash
+sudo /opt/vitalis/vitalis-agent --uninstall
+```
+
+### 5.4 Autostart Behavior Summary
+
+| Platform | Mechanism             | Service Name        | Auto-restart on crash | Start at boot         | Requires      |
+| -------- | --------------------- | ------------------- | --------------------- | --------------------- | ------------- |
+| Windows  | Windows Service (SCM) | `VitalisAgent`      | SCM recovery actions  | Automatic start type  | Administrator |
+| Linux    | systemd unit file     | `vitalis-agent`     | `Restart=always`      | `WantedBy=multi-user` | root          |
+| macOS    | launchd plist         | `com.vitalis.agent` | `KeepAlive=true`      | `RunAtLoad=true`      | root          |
+
+### 5.5 Manual Service Control
+
+If you prefer not to rely on auto-installation, use the `--install` and `--uninstall` flags for explicit control:
+
+```bash
+# Manually install as a system service
+sudo ./vitalis-agent --install
+
+# Manually remove the system service
+sudo ./vitalis-agent --uninstall
+```
+
+### 5.6 Runtime Environment Variable Overrides
+
+Even with embedded config, you can override specific values at runtime using environment variables:
+
+| Variable           | Overrides              | Example                                       |
+| ------------------ | ---------------------- | --------------------------------------------- |
+| `SA_SERVER_URL`    | `server.url`           | `https://your-app.vercel.app`                 |
+| `SA_MACHINE_TOKEN` | `server.machine_token` | `mtoken_a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `SA_LOG_LEVEL`     | `logging.level`        | `debug`                                       |
+
+For systemd services, set these in an environment file or override:
+
+```bash
+sudo systemctl edit vitalis-agent
+```
+
+```ini
+[Service]
+Environment="SA_LOG_LEVEL=debug"
+```
+
+---
+
+## 6. First-Time Setup Flow
 
 Follow these steps in order after deploying the web app:
 
@@ -450,9 +421,9 @@ mtoken_a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 > **Warning:** The token is only shown at creation time. If you lose it, you'll need to delete the machine and create a new one.
 
-### Step 5: Configure the Agent
+### Step 5: Create a Config and Build the Agent
 
-Set the machine token in your [`agent.yaml`](agent/configs/agent.yaml) configuration file:
+Create a config file for the machine in [`agent/configs/`](agent/configs/):
 
 ```yaml
 server:
@@ -460,19 +431,21 @@ server:
   machine_token: "mtoken_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 ```
 
-Alternatively, use the environment variable (preferred for production):
+Build the agent with the config embedded:
 
 ```bash
-export SA_MACHINE_TOKEN="mtoken_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-export SA_SERVER_URL="https://your-project.vercel.app"
+./build.sh --config agent_myserver --version 1.0.0
 ```
 
-### Step 6: Start the Agent
+Alternatively, use the environment variable override (set `SA_MACHINE_TOKEN` on the target machine) if you prefer a generic build.
 
-Start the agent using your platform's service manager or run it directly:
+### Step 6: Deploy and Run the Agent
+
+Copy the binary to the target machine and run it. The agent auto-installs as a system service:
 
 ```bash
-./vitalis-agent --config /path/to/agent.yaml
+sudo cp build/vitalis-agent /opt/vitalis/vitalis-agent
+sudo /opt/vitalis/vitalis-agent
 ```
 
 ### Step 7: Verify
@@ -483,7 +456,7 @@ Start the agent using your platform's service manager or run it directly:
 
 ---
 
-## 8. Environment Variables Reference
+## 7. Environment Variables Reference
 
 ### Web App ([`.env.example`](.env.example))
 
@@ -499,30 +472,40 @@ Start the agent using your platform's service manager or run it directly:
 
 ### Agent (environment variable overrides)
 
-| Variable           | Required | Default                               | Description                                                                      |
-| ------------------ | -------- | ------------------------------------- | -------------------------------------------------------------------------------- |
-| `SA_SERVER_URL`    | No       | Config file / `http://localhost:3000` | API server URL (overrides [`agent.yaml`](agent/configs/agent.yaml) `server.url`) |
-| `SA_MACHINE_TOKEN` | No       | Config file                           | Machine authentication token (overrides `server.machine_token`)                  |
-| `SA_LOG_LEVEL`     | No       | Config file / `info`                  | Log level: `debug`, `info`, `warn`, `error`                                      |
+These override the embedded configuration at runtime:
+
+| Variable           | Required | Default                            | Description                                                     |
+| ------------------ | -------- | ---------------------------------- | --------------------------------------------------------------- |
+| `SA_SERVER_URL`    | No       | Embedded / `http://localhost:3000` | API server URL (overrides embedded `server.url`)                |
+| `SA_MACHINE_TOKEN` | No       | Embedded                           | Machine authentication token (overrides `server.machine_token`) |
+| `SA_LOG_LEVEL`     | No       | Embedded / `info`                  | Log level: `debug`, `info`, `warn`, `error`                     |
 
 ---
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 ### Agent Can't Connect to Server
 
-| Symptom                             | Cause                                 | Solution                                                       |
-| ----------------------------------- | ------------------------------------- | -------------------------------------------------------------- |
-| `send request: connection refused`  | Server URL is wrong or server is down | Verify `server.url` in config. Check Vercel deployment status. |
-| `send request: TLS handshake error` | HTTPS certificate issue               | Ensure the URL uses `https://`. Check Vercel domain config.    |
-| `server returned 401`               | Invalid machine token                 | Verify the token matches what was generated in the dashboard.  |
-| `server returned 429`               | Rate limit exceeded                   | Increase `collection.interval` or `collection.batch_interval`. |
+| Symptom                             | Cause                                 | Solution                                                                                                                          |
+| ----------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `send request: connection refused`  | Server URL is wrong or server is down | Verify `server.url` in the embedded config or override with `SA_SERVER_URL`. Check Vercel deployment status.                      |
+| `send request: TLS handshake error` | HTTPS certificate issue               | Ensure the URL uses `https://`. Check Vercel domain config.                                                                       |
+| `server returned 401`               | Invalid machine token                 | Verify the token matches what was generated in the dashboard. Rebuild with the correct token or override with `SA_MACHINE_TOKEN`. |
+| `server returned 429`               | Rate limit exceeded                   | Increase `collection.interval` or `collection.batch_interval` in the config and rebuild.                                          |
+
+### Auto-Install Fails
+
+| Symptom                                              | Cause                                   | Solution                                                                       |
+| ---------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| `Auto-install failed (may need elevated privileges)` | Not running as admin/root               | Run with `sudo` (Linux/macOS) or as Administrator (Windows)                    |
+| `Install failed: connecting to SCM`                  | Not running as Administrator on Windows | Right-click → Run as Administrator, or use `--install` from an elevated prompt |
+| `Install failed: creating unit file`                 | Not running as root on Linux            | Use `sudo ./vitalis-agent` or `sudo ./vitalis-agent --install`                 |
 
 ### No Metrics Appearing in Dashboard
 
-1. **Check agent is running:** `systemctl status vitalis-agent` (Linux) or `sc query VitalisAgent` (Windows)
+1. **Check agent is running:** `systemctl status vitalis-agent` (Linux), `sc query VitalisAgent` (Windows), or `launchctl list | grep vitalis` (macOS)
 2. **Check agent logs:** Look for `"Batch sent successfully"` messages in the log file
-3. **Check machine token:** Ensure the token in the agent config matches the one from the dashboard
+3. **Check machine token:** Ensure the embedded token matches the one from the dashboard, or override with `SA_MACHINE_TOKEN`
 4. **Check `last_seen`:** If the machine shows a recent `last_seen` but no charts, the time range selector may need adjusting
 
 ### Dashboard Shows Machine as Offline

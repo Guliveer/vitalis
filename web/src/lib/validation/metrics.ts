@@ -20,16 +20,28 @@ export const processEntrySchema = z.object({
 export const singleMetricSchema = z.object({
   timestamp: z.string().datetime(),
   cpu_overall: z.number().min(0).max(100),
-  cpu_cores: z.array(z.number().min(0).max(100)).max(256),
+  cpu_cores: z
+    .array(z.number().min(0).max(100))
+    .max(256)
+    .nullable()
+    .transform((v) => v ?? []),
   ram_used: z.number().int().nonnegative(),
   ram_total: z.number().int().positive(),
-  disk_usage: z.array(diskUsageEntrySchema).max(50),
+  disk_usage: z
+    .array(diskUsageEntrySchema)
+    .max(50)
+    .nullable()
+    .transform((v) => v ?? []),
   network_rx: z.number().int().nonnegative(),
   network_tx: z.number().int().nonnegative(),
   uptime_seconds: z.number().int().nonnegative(),
   cpu_temp: z.number().nullable().optional(),
   gpu_temp: z.number().nullable().optional(),
-  processes: z.array(processEntrySchema).max(50),
+  processes: z
+    .array(processEntrySchema)
+    .max(50)
+    .nullable()
+    .transform((v) => v ?? []),
 });
 
 export const metricBatchSchema = z.object({

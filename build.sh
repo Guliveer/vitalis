@@ -5,7 +5,8 @@
 # Builds the Vitalis agent for one or more target platforms.
 #
 # Usage:
-#   ./build.sh                        # Build for current platform
+#   ./build.sh                        # Build for current platform (interactive config)
+#   ./build.sh --config agent_z370m   # Build with a specific config
 #   ./build.sh --all                  # Build for all supported platforms
 #   ./build.sh --platform linux/amd64 # Build for a specific platform
 #   ./build.sh --version 1.2.3        # Set version string
@@ -21,6 +22,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="${SCRIPT_DIR}/agent"
 BUILD_DIR="${SCRIPT_DIR}/build"
+CONFIGS_DIR="${SCRIPT_DIR}/agent/configs"
+EMBED_CONFIG="${SCRIPT_DIR}/agent/cmd/agent/embed_config.yaml"
 MODULE="./cmd/agent/"
 BINARY_PREFIX="vitalis-agent"
 
@@ -66,10 +69,12 @@ ${CYAN}Usage:${RESET}
   ./build.sh [options]
 
 ${CYAN}Options:${RESET}
+  --config <name>        Config to embed (name without .yaml extension from agent/configs/)
+                         If omitted, an interactive picker is shown
   --platform <os/arch>   Build for a specific platform (e.g., linux/amd64)
   --version <version>    Set the version string embedded in the binary (default: dev)
   --all                  Build for all supported platforms
-  --clean                Remove the build/ directory and exit
+  --clean                Remove the build/ directory and staged embed_config.yaml, then exit
   --help                 Show this help message
 
 ${CYAN}Supported platforms:${RESET}
@@ -79,7 +84,8 @@ ${CYAN}Supported platforms:${RESET}
   darwin/amd64           macOS Intel
 
 ${CYAN}Examples:${RESET}
-  ./build.sh                              # Build for current OS/arch
+  ./build.sh                              # Build for current OS/arch (interactive config)
+  ./build.sh --config agent_z370m         # Build with specific config embedded
   ./build.sh --all --version 1.0.0        # Build all platforms with version
   ./build.sh --platform windows/amd64     # Cross-compile for Windows
   ./build.sh --clean                      # Clean build artifacts
@@ -155,11 +161,20 @@ create_convenience_link() {
 # ---------------------------------------------------------------------------
 VERSION="dev"
 PLATFORM=""
+CONFIG=""
 BUILD_ALL=false
 CLEAN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --config)
+      if [[ -z "${2:-}" ]]; then
+        error "--config requires an argument (config name without .yaml extension)"
+        exit 1
+      fi
+      CONFIG="$2"
+      shift 2
+      ;;
     --platform)
       if [[ -z "${2:-}" ]]; then
         error "--platform requires an argument (e.g., linux/amd64)"
@@ -207,6 +222,10 @@ if [[ "${CLEAN}" == true ]]; then
   else
     info "build/ directory does not exist — nothing to clean"
   fi
+  if [[ -f "${EMBED_CONFIG}" ]]; then
+    rm -f "${EMBED_CONFIG}"
+    success "Removed staged embed_config.yaml"
+  fi
   exit 0
 fi
 
@@ -226,6 +245,85 @@ fi
 
 info "Go version: $(go version)"
 info "Version tag: ${BOLD}${VERSION}${RESET}"
+echo ""
+
+# ---------------------------------------------------------------------------
+# Config selection
+# ---------------------------------------------------------------------------
+select_config() {
+  # Gather available config files
+  local config_files=()
+  local config_names=()
+
+  if [[ ! -d "${CONFIGS_DIR}" ]]; then
+    error "Configs directory not found: ${CONFIGS_DIR}"
+    exit 1
+  fi
+
+  for f in "${CONFIGS_DIR}"/*.yaml; do
+    [[ -e "${f}" ]] || continue
+    config_files+=("${f}")
+    local base
+    base="$(basename "${f}" .yaml)"
+    config_names+=("${base}")
+  done
+
+  if [[ ${#config_files[@]} -eq 0 ]]; then
+    error "No .yaml config files found in ${CONFIGS_DIR}"
+    exit 1
+  fi
+
+  if [[ -n "${CONFIG}" ]]; then
+    # Validate the provided config name
+    local config_path="${CONFIGS_DIR}/${CONFIG}.yaml"
+    if [[ ! -f "${config_path}" ]]; then
+      error "Config file not found: ${config_path}"
+      echo ""
+      info "Available configs:"
+      for name in "${config_names[@]}"; do
+        echo "  - ${name}"
+      done
+      exit 1
+    fi
+    SELECTED_CONFIG_NAME="${CONFIG}"
+    SELECTED_CONFIG_PATH="${config_path}"
+  else
+    # Interactive selection
+    echo -e "${CYAN}Available configurations:${RESET}"
+    local i=1
+    for name in "${config_names[@]}"; do
+      echo "  ${i}) ${name}"
+      ((i++))
+    done
+    echo ""
+
+    local selection
+    read -p "Select configuration [1-${#config_names[@]}]: " selection
+
+    # Validate selection is a number
+    if ! [[ "${selection}" =~ ^[0-9]+$ ]]; then
+      error "Invalid selection: '${selection}' — expected a number"
+      exit 1
+    fi
+
+    if [[ "${selection}" -lt 1 || "${selection}" -gt ${#config_names[@]} ]]; then
+      error "Selection out of range: ${selection} (valid: 1-${#config_names[@]})"
+      exit 1
+    fi
+
+    local idx=$((selection - 1))
+    SELECTED_CONFIG_NAME="${config_names[${idx}]}"
+    SELECTED_CONFIG_PATH="${config_files[${idx}]}"
+  fi
+}
+
+select_config
+
+info "Using config: ${BOLD}${SELECTED_CONFIG_NAME}${RESET} (${SELECTED_CONFIG_PATH})"
+
+# Stage the config for go:embed
+cp "${SELECTED_CONFIG_PATH}" "${EMBED_CONFIG}"
+success "Staged config → agent/cmd/agent/embed_config.yaml"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -307,6 +405,7 @@ echo ""
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD} Build Summary${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "Embedded config: ${CYAN}${SELECTED_CONFIG_NAME}${RESET} (${SELECTED_CONFIG_PATH})"
 
 if [[ ${#BUILT[@]} -gt 0 ]]; then
   echo -e "${GREEN}✓ Succeeded (${#BUILT[@]}):${RESET}"

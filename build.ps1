@@ -4,7 +4,8 @@
 # Builds the Vitalis agent for one or more target platforms.
 #
 # Usage:
-#   .\build.ps1                              # Build for current platform
+#   .\build.ps1                              # Build for current platform (interactive config)
+#   .\build.ps1 -Config "agent_z370m"        # Build with a specific config
 #   .\build.ps1 -All                         # Build for all supported platforms
 #   .\build.ps1 -Platform "windows/amd64"    # Build for a specific platform
 #   .\build.ps1 -Version "1.2.3"             # Set version string
@@ -14,6 +15,7 @@
 
 [CmdletBinding()]
 param(
+    [string]$Config = "",
     [string]$Platform = "",
     [string]$Version = "dev",
     [switch]$All,
@@ -24,10 +26,12 @@ param(
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-$ScriptDir   = $PSScriptRoot
-$AgentDir    = Join-Path $ScriptDir "agent"
-$BuildDir    = Join-Path $ScriptDir "build"
-$Module      = "./cmd/agent/"
+$ScriptDir    = $PSScriptRoot
+$AgentDir     = Join-Path $ScriptDir "agent"
+$BuildDir     = Join-Path $ScriptDir "build"
+$ConfigsDir   = Join-Path $ScriptDir "agent" "configs"
+$EmbedConfig  = Join-Path $ScriptDir "agent" "cmd" "agent" "embed_config.yaml"
+$Module       = "./cmd/agent/"
 $BinaryPrefix = "vitalis-agent"
 
 # Supported platforms (os/arch)
@@ -58,10 +62,12 @@ function Show-Help {
     Write-Host "  .\build.ps1 [options]"
     Write-Host ""
     Write-Host "Options:" -ForegroundColor Cyan
+    Write-Host "  -Config <name>        Config to embed (name without .yaml extension from agent/configs/)"
+    Write-Host "                        If omitted, an interactive picker is shown"
     Write-Host "  -Platform <os/arch>   Build for a specific platform (e.g., linux/amd64)"
     Write-Host "  -Version <version>    Set the version string embedded in the binary (default: dev)"
     Write-Host "  -All                  Build for all supported platforms"
-    Write-Host "  -Clean                Remove the build/ directory and exit"
+    Write-Host "  -Clean                Remove the build/ directory and staged embed_config.yaml, then exit"
     Write-Host "  -Help                 Show this help message"
     Write-Host ""
     Write-Host "Supported platforms:" -ForegroundColor Cyan
@@ -71,7 +77,8 @@ function Show-Help {
     Write-Host "  darwin/amd64           macOS Intel"
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Cyan
-    Write-Host "  .\build.ps1                              # Build for current OS/arch"
+    Write-Host "  .\build.ps1                              # Build for current OS/arch (interactive config)"
+    Write-Host "  .\build.ps1 -Config agent_z370m          # Build with specific config embedded"
     Write-Host "  .\build.ps1 -All -Version 1.0.0          # Build all platforms with version"
     Write-Host "  .\build.ps1 -Platform windows/amd64      # Cross-compile for Windows"
     Write-Host "  .\build.ps1 -Clean                       # Clean build artifacts"
@@ -191,6 +198,10 @@ if ($Clean) {
     else {
         Write-Info "build/ directory does not exist - nothing to clean"
     }
+    if (Test-Path $EmbedConfig) {
+        Remove-Item -Force $EmbedConfig
+        Write-Success "Removed staged embed_config.yaml"
+    }
     exit 0
 }
 
@@ -211,6 +222,74 @@ if (-not (Test-Path (Join-Path $AgentDir "go.mod"))) {
 $goVersion = & go version
 Write-Info "Go version: $goVersion"
 Write-Info "Version tag: $Version"
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Config selection
+# ---------------------------------------------------------------------------
+$SelectedConfigName = ""
+$SelectedConfigPath = ""
+
+if (-not (Test-Path $ConfigsDir)) {
+    Write-Err "Configs directory not found: $ConfigsDir"
+    exit 1
+}
+
+$configFiles = Get-ChildItem -Path $ConfigsDir -Filter "*.yaml" -File
+if ($configFiles.Count -eq 0) {
+    Write-Err "No .yaml config files found in $ConfigsDir"
+    exit 1
+}
+
+$configNames = $configFiles | ForEach-Object { $_.BaseName }
+
+if ($Config -ne "") {
+    # Validate the provided config name
+    $configPath = Join-Path $ConfigsDir "$Config.yaml"
+    if (-not (Test-Path $configPath)) {
+        Write-Err "Config file not found: $configPath"
+        Write-Host ""
+        Write-Info "Available configs:"
+        foreach ($name in $configNames) {
+            Write-Host "  - $name"
+        }
+        exit 1
+    }
+    $SelectedConfigName = $Config
+    $SelectedConfigPath = $configPath
+}
+else {
+    # Interactive selection
+    Write-Host "Available configurations:" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $configNames.Count; $i++) {
+        Write-Host ("  {0}) {1}" -f ($i + 1), $configNames[$i])
+    }
+    Write-Host ""
+
+    $selection = Read-Host "Select configuration [1-$($configNames.Count)]"
+
+    # Validate selection is a number
+    $selNum = 0
+    if (-not [int]::TryParse($selection, [ref]$selNum)) {
+        Write-Err "Invalid selection: '$selection' - expected a number"
+        exit 1
+    }
+
+    if ($selNum -lt 1 -or $selNum -gt $configNames.Count) {
+        Write-Err "Selection out of range: $selNum (valid: 1-$($configNames.Count))"
+        exit 1
+    }
+
+    $idx = $selNum - 1
+    $SelectedConfigName = $configNames[$idx]
+    $SelectedConfigPath = $configFiles[$idx].FullName
+}
+
+Write-Info "Using config: $SelectedConfigName ($SelectedConfigPath)"
+
+# Stage the config for go:embed
+Copy-Item -Path $SelectedConfigPath -Destination $EmbedConfig -Force
+Write-Success "Staged config -> agent/cmd/agent/embed_config.yaml"
 Write-Host ""
 
 # Create build directory
@@ -298,6 +377,7 @@ Write-Host ""
 Write-Host ("=" * 44) -ForegroundColor White
 Write-Host " Build Summary" -ForegroundColor White
 Write-Host ("=" * 44) -ForegroundColor White
+Write-Host "Embedded config: $SelectedConfigName ($SelectedConfigPath)" -ForegroundColor Cyan
 
 if ($built.Count -gt 0) {
     Write-Host "Succeeded ($($built.Count)):" -ForegroundColor Green

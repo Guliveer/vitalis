@@ -1,0 +1,16 @@
+server:
+  url: "https://your-app.vercel.app"
+  machine_token: ""
+
+collection:
+  interval: "15s"
+  batch_interval: "30s"
+  top_processes: 10
+
+buffer:
+  max_size_mb: 50
+  db_path: "./buffer"
+
+logging:
+  level: "info"
+  file: "./agent.log"

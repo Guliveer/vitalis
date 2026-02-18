@@ -2,6 +2,7 @@
 // Accepts JSON batches authenticated via Authorization header or machine_token in body
 
 import { NextRequest } from "next/server";
+import { gunzipSync } from "zlib";
 import { getDb } from "@/lib/db";
 import { metrics, processSnapshots, machines } from "@/lib/db/schema";
 import { metricBatchSchema } from "@/lib/validation/metrics";
@@ -27,8 +28,21 @@ function extractMachineToken(request: NextRequest, bodyToken?: string): string |
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse request body
-    const body = await request.json();
+    // Parse request body, handling gzip-compressed payloads from Go agents
+    let body: unknown;
+    const contentEncoding = request.headers.get("content-encoding");
+
+    if (contentEncoding === "gzip") {
+      try {
+        const buffer = Buffer.from(await request.arrayBuffer());
+        const decompressed = gunzipSync(buffer);
+        body = JSON.parse(decompressed.toString("utf-8"));
+      } catch {
+        return errorResponse("Invalid gzip payload", 400);
+      }
+    } else {
+      body = await request.json();
+    }
 
     // Validate with metricBatchSchema (machine_token is now optional in body)
     const parsed = metricBatchSchema.safeParse(body);

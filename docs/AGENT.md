@@ -1,6 +1,6 @@
 # Agent Documentation
 
-The Vitalis agent is a lightweight Go binary that collects system metrics and sends them to the web API. It runs as a background service (Windows service, systemd unit, or launchd daemon) with offline buffering and automatic retry logic.
+The Vitalis agent is a lightweight Go binary that collects system metrics and sends them to the web API. It runs as a background service (Windows service, systemd unit, or launchd daemon) with offline buffering and automatic retry logic. Configuration is **embedded at build time**, making each binary fully self-contained.
 
 ---
 
@@ -10,7 +10,7 @@ The Vitalis agent is a lightweight Go binary that collects system metrics and se
 2. [Configuration](#2-configuration)
 3. [Collectors](#3-collectors)
 4. [Offline Mode & Buffering](#4-offline-mode--buffering)
-5. [Windows Service](#5-windows-service)
+5. [Service Registration & Autostart](#5-service-registration--autostart)
 6. [Building](#6-building)
 7. [Extending — Adding a New Collector](#7-extending--adding-a-new-collector)
 
@@ -67,19 +67,53 @@ The agent entry point is [`agent/cmd/agent/main.go`](agent/cmd/agent/main.go). I
 ./vitalis-agent [flags]
 
 Flags:
-  --config string   Path to configuration file (default "agent.yaml")
-  --version         Show version and exit
+  --version     Show version and exit
+  --install     Install as system service and exit
+  --uninstall   Remove system service and exit
 ```
+
+> **Note:** There is no `--config` flag. Configuration is embedded into the binary at build time. See [Configuration](#2-configuration) for details.
 
 ---
 
 ## 2. Configuration
 
-Configuration is loaded from a YAML file with environment variable overrides. The precedence order is:
+### Embedded Configuration
 
-**Environment variables > Config file > Defaults**
+Configuration is **baked into the binary at build time** using Go's `//go:embed` directive. The build scripts ([`build.sh`](build.sh) / [`build.ps1`](build.ps1)) copy the selected config from [`agent/configs/`](agent/configs/) into a staging file ([`agent/cmd/agent/embed_config.yaml`](agent/cmd/agent/embed_config.yaml)), which is then embedded by [`agent/cmd/agent/embed.go`](agent/cmd/agent/embed.go).
+
+This means:
+
+- **No external config file is needed** — the binary is fully self-contained
+- **Each binary is machine-specific** — built with the correct server URL and machine token
+- **Environment variables still override** embedded values at runtime
+
+### Config Precedence
+
+```
+Embedded YAML (baked at build time)
+        ↓ overridden by
+Environment Variables (SA_SERVER_URL, SA_MACHINE_TOKEN, SA_LOG_LEVEL)
+```
 
 Configuration loading is implemented in [`agent/internal/config/config.go`](agent/internal/config/config.go).
+
+### The `configs/` Directory
+
+The [`agent/configs/`](agent/configs/) directory contains YAML configuration files — one per target machine or environment. Examples:
+
+| File                                                 | Purpose                              |
+| ---------------------------------------------------- | ------------------------------------ |
+| [`agent.yaml`](agent/configs/agent.yaml)             | Default / template configuration     |
+| [`agent_z370m.yaml`](agent/configs/agent_z370m.yaml) | Configuration for a specific machine |
+
+To add a new configuration:
+
+1. Copy an existing config file in `agent/configs/` (e.g., `cp agent.yaml agent_myserver.yaml`)
+2. Edit the new file with the target machine's server URL and machine token
+3. Build with `./build.sh --config agent_myserver`
+
+The build scripts offer an **interactive picker** when `--config` is not specified — they list all YAML files in `agent/configs/` and prompt you to choose one.
 
 ### Full Configuration Reference
 
@@ -146,7 +180,7 @@ Defined in [`DefaultConfig()`](agent/internal/config/config.go:75):
 
 ### Environment Variable Overrides
 
-These environment variables take the highest precedence and override both config file and default values:
+These environment variables take the highest precedence and override embedded config values:
 
 | Variable           | Overrides              | Example                                       |
 | ------------------ | ---------------------- | --------------------------------------------- |
@@ -178,7 +212,7 @@ type Collector interface {
 }
 ```
 
-Collectors are registered in [`runAgent()`](agent/cmd/agent/main.go:95) at startup:
+Collectors are registered in [`runAgent()`](agent/cmd/agent/main.go:148) at startup:
 
 ```go
 registry.Register(collector.NewCPUCollector())
@@ -281,59 +315,98 @@ Special cases:
 
 ---
 
-## 5. Windows Service
+## 5. Service Registration & Autostart
 
-The agent can run as a native Windows service using the [`golang.org/x/sys/windows/svc`](https://pkg.go.dev/golang.org/x/sys/windows/svc) package.
+The agent automatically registers itself as a system service on first run. This eliminates the need for manual service installation steps.
 
-### Service Implementation
+### How It Works
 
-Service code is in [`agent/internal/service/`](agent/internal/service/):
+On every startup, the agent checks whether it is already registered as a system service. If not, it automatically installs itself using the platform-appropriate mechanism. Failures are logged as warnings but do not prevent the agent from running.
 
-| File                                                        | Description                          |
-| ----------------------------------------------------------- | ------------------------------------ |
-| [`service.go`](agent/internal/service/service.go)           | Windows service implementation       |
-| [`service_stub.go`](agent/internal/service/service_stub.go) | No-op stub for non-Windows platforms |
-
-The agent automatically detects whether it's running as a Windows service or as a standalone foreground process (see [`main.go:63`](agent/cmd/agent/main.go:63)).
-
-### Installation
-
-```powershell
-# Install the service
-sc create VitalisAgent ^
-  binPath= "\"C:\Program Files\Vitalis\vitalis-agent.exe\" --config \"C:\Program Files\Vitalis\agent.yaml\"" ^
-  start= auto ^
-  DisplayName= "Vitalis Agent"
-
-# Start the service
-sc start VitalisAgent
+```mermaid
+flowchart TD
+    Start["Binary launched"] --> ParseFlags["Parse CLI flags"]
+    ParseFlags --> CheckVersion{"--version?"}
+    CheckVersion -->|Yes| PrintVersion["Print version and exit"]
+    CheckVersion -->|No| CheckInstall{"--install?"}
+    CheckInstall -->|Yes| DoInstall["Register as service and exit"]
+    CheckInstall -->|No| CheckUninstall{"--uninstall?"}
+    CheckUninstall -->|Yes| DoUninstall["Remove service and exit"]
+    CheckUninstall -->|No| LoadConfig["Load embedded config"]
+    LoadConfig --> CheckAutoInstall{"Already registered\nas service?"}
+    CheckAutoInstall -->|No| AutoInstall["Auto-register as service"]
+    AutoInstall --> RunAgent["Run agent loop"]
+    CheckAutoInstall -->|Yes| RunAgent
 ```
 
-### Management Commands
+### Platform-Specific Mechanisms
+
+The autostart package ([`agent/internal/autostart/`](agent/internal/autostart/autostart.go)) provides a platform-agnostic [`Manager`](agent/internal/autostart/autostart.go:6) interface with platform-specific implementations:
+
+| Platform | Mechanism             | Implementation                                                          | Service Name        | Requires      |
+| -------- | --------------------- | ----------------------------------------------------------------------- | ------------------- | ------------- |
+| Windows  | Windows Service (SCM) | [`autostart_windows.go`](agent/internal/autostart/autostart_windows.go) | `VitalisAgent`      | Administrator |
+| Linux    | systemd unit file     | [`autostart_linux.go`](agent/internal/autostart/autostart_linux.go)     | `vitalis-agent`     | root          |
+| macOS    | launchd plist         | [`autostart_darwin.go`](agent/internal/autostart/autostart_darwin.go)   | `com.vitalis.agent` | root          |
+
+### Manual Control with `--install` / `--uninstall`
+
+While the agent auto-installs on first run, you can also manage service registration manually:
+
+```bash
+# Manually install as a system service
+./vitalis-agent --install
+
+# Manually remove the system service
+./vitalis-agent --uninstall
+```
+
+These flags register or remove the service and then exit immediately. They are useful for:
+
+- **Automation scripts** that need explicit control over service lifecycle
+- **Uninstalling** the agent cleanly from a machine
+- **Re-installing** after moving the binary to a different path
+
+### Service Management
+
+After the agent is registered as a service, use the platform's native tools to manage it:
+
+#### Windows
 
 ```powershell
-# Check status
-sc query VitalisAgent
+sc query VitalisAgent          # Check status
+sc stop VitalisAgent           # Stop the service
+sc start VitalisAgent          # Start the service
+sc stop VitalisAgent && sc start VitalisAgent  # Restart
+```
 
-# Stop the service
-sc stop VitalisAgent
+#### Linux
 
-# Restart
-sc stop VitalisAgent && sc start VitalisAgent
+```bash
+sudo systemctl status vitalis-agent    # Check status
+sudo systemctl stop vitalis-agent      # Stop
+sudo systemctl start vitalis-agent     # Start
+sudo systemctl restart vitalis-agent   # Restart
+sudo journalctl -u vitalis-agent -f    # View logs
+```
 
-# Remove the service
-sc stop VitalisAgent
-sc delete VitalisAgent
+#### macOS
+
+```bash
+launchctl list | grep vitalis          # Check status
+sudo launchctl stop com.vitalis.agent  # Stop
+sudo launchctl start com.vitalis.agent # Start
 ```
 
 ### Logs
 
-- **Event Viewer:** Windows Logs → Application → filter by source `VitalisAgent`
-- **Log File:** Check the path configured in `logging.file` (e.g., `C:\ProgramData\Vitalis\agent.log`)
+- **Windows:** Event Viewer → Windows Logs → Application → filter by source `VitalisAgent`, plus the log file configured in `logging.file`
+- **Linux:** `journalctl -u vitalis-agent` plus the log file
+- **macOS:** `/var/log/vitalis/stdout.log` and `/var/log/vitalis/stderr.log` plus the log file
 
 ### Graceful Shutdown
 
-When the Windows service receives a stop signal:
+When the service receives a stop signal:
 
 1. Stop all collector tickers
 2. Flush pending events to buffer
@@ -352,30 +425,50 @@ When the Windows service receives a stop signal:
 
 ### Using Build Scripts (Recommended)
 
-The project includes cross-platform build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows) that handle compilation, version embedding, and output organization.
+The project includes cross-platform build scripts ([`build.sh`](build.sh) for macOS/Linux and [`build.ps1`](build.ps1) for Windows) that handle **config embedding**, compilation, version embedding, and output organization.
+
+#### Config Selection
+
+The build scripts require a configuration to embed. You can specify it with `--config` or use the interactive picker:
+
+```bash
+# Specify a config by name (from agent/configs/)
+./build.sh --config agent_z370m
+
+# Interactive: lists available configs and prompts you to choose
+./build.sh
+```
+
+```
+Available configurations:
+  1) agent
+  2) agent_z370m
+
+Select configuration [1-2]: _
+```
 
 #### Build for Current Platform
 
 ```bash
-./build.sh
+./build.sh --config agent_z370m
 ```
 
 #### Build All Platforms
 
 ```bash
-./build.sh --all --version 1.0.0
+./build.sh --all --config agent_z370m --version 1.0.0
 ```
 
 #### Cross-Compile for a Specific Platform
 
 ```bash
-./build.sh --platform windows/amd64
+./build.sh --platform windows/amd64 --config agent_z370m
 ```
 
 #### Windows Users (PowerShell)
 
 ```powershell
-.\build.ps1 -All -Version "1.0.0"
+.\build.ps1 -Config "agent_z370m" -All -Version "1.0.0"
 ```
 
 Binaries are output to the `build/` directory with platform-specific naming (e.g., `vitalis-agent-windows-amd64.exe`, `vitalis-agent-linux-amd64`).
@@ -388,11 +481,19 @@ Binaries are output to the `build/` directory with platform-specific naming (e.g
 
 ### Manual Build
 
-If you prefer manual builds, you can use `go build` directly:
+If you prefer manual builds, you must first stage the config file before running `go build`:
 
 ```bash
 cd agent
+
+# Stage the config for embedding
+cp configs/agent_z370m.yaml cmd/agent/embed_config.yaml
+
+# Build
 go build -ldflags "-s -w -X main.version=1.0.0" -o vitalis-agent ./cmd/agent/
+
+# Clean up the staging file
+rm cmd/agent/embed_config.yaml
 ```
 
 ### Manual Cross-Compilation
@@ -400,25 +501,33 @@ go build -ldflags "-s -w -X main.version=1.0.0" -o vitalis-agent ./cmd/agent/
 #### Windows (amd64)
 
 ```bash
+cp configs/agent_z370m.yaml cmd/agent/embed_config.yaml
 GOOS=windows GOARCH=amd64 go build -o vitalis-agent.exe ./cmd/agent/
+rm cmd/agent/embed_config.yaml
 ```
 
 #### Linux (amd64)
 
 ```bash
+cp configs/agent_z370m.yaml cmd/agent/embed_config.yaml
 GOOS=linux GOARCH=amd64 go build -o vitalis-agent ./cmd/agent/
+rm cmd/agent/embed_config.yaml
 ```
 
 #### macOS (Apple Silicon — arm64)
 
 ```bash
+cp configs/agent_z370m.yaml cmd/agent/embed_config.yaml
 GOOS=darwin GOARCH=arm64 go build -o vitalis-agent ./cmd/agent/
+rm cmd/agent/embed_config.yaml
 ```
 
 #### macOS (Intel — amd64)
 
 ```bash
+cp configs/agent_z370m.yaml cmd/agent/embed_config.yaml
 GOOS=darwin GOARCH=amd64 go build -o vitalis-agent ./cmd/agent/
+rm cmd/agent/embed_config.yaml
 ```
 
 ### Versioned Build
@@ -495,7 +604,7 @@ func (c *GPUCollector) IsAvailable() bool {
 
 ### Step 2: Register the Collector
 
-Add the collector to the registry in [`agent/cmd/agent/main.go`](agent/cmd/agent/main.go:108):
+Add the collector to the registry in [`agent/cmd/agent/main.go`](agent/cmd/agent/main.go:170):
 
 ```go
 registry.Register(collector.NewGPUCollector())

@@ -94,27 +94,46 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load reads configuration from a YAML file and merges with defaults.
-// If path is empty or the file does not exist, only defaults and environment
-// variables are used.
-func Load(path string) (*Config, error) {
+// LoadFromBytes parses YAML configuration from a byte slice and merges with defaults.
+// Environment variables take highest precedence and override values from the byte slice.
+func LoadFromBytes(data []byte) (*Config, error) {
 	cfg := DefaultConfig()
 
-	if path != "" {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("reading config file: %w", err)
-			}
-			// File doesn't exist — use defaults + env overrides
-		} else {
-			if err := yaml.Unmarshal(data, cfg); err != nil {
-				return nil, fmt.Errorf("parsing config file: %w", err)
-			}
+	if len(data) > 0 {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("parsing config data: %w", err)
 		}
 	}
 
 	// Environment variable overrides (highest precedence)
+	applyEnvOverrides(cfg)
+
+	return cfg, nil
+}
+
+// Load reads configuration from a YAML file and merges with defaults.
+// If path is empty or the file does not exist, only defaults and environment
+// variables are used.
+func Load(path string) (*Config, error) {
+	if path == "" {
+		return LoadFromBytes(nil)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading config file: %w", err)
+		}
+		// File doesn't exist — use defaults + env overrides
+		return LoadFromBytes(nil)
+	}
+
+	return LoadFromBytes(data)
+}
+
+// applyEnvOverrides applies environment variable overrides to the configuration.
+// Environment variables have the highest precedence.
+func applyEnvOverrides(cfg *Config) {
 	if url := os.Getenv("SA_SERVER_URL"); url != "" {
 		cfg.Server.URL = url
 	}
@@ -124,8 +143,6 @@ func Load(path string) (*Config, error) {
 	if level := os.Getenv("SA_LOG_LEVEL"); level != "" {
 		cfg.Logging.Level = level
 	}
-
-	return cfg, nil
 }
 
 // Validate checks that the configuration is valid for production use.
