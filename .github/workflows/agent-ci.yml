@@ -29,7 +29,7 @@ jobs:
 
     strategy:
       matrix:
-        go-version: ["1.21"]
+        go-version: ["1.23"]
 
     defaults:
       run:
@@ -45,14 +45,29 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache-dependency-path: agent/go.sum
 
+      - name: Prepare embed config
+        run: cp cmd/agent/embed_config.yaml.example cmd/agent/embed_config.yaml
+
       - name: Download dependencies
         run: go mod download
 
       - name: Lint (go vet)
         run: go vet ./...
 
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          working-directory: agent/
+
       - name: Test with race detector & coverage
         run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-coverage-go${{ matrix.go-version }}
+          path: agent/coverage.out
+          retention-days: 30
 
       - name: Build check — windows/amd64
         run: GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/agent/

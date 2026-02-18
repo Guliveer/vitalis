@@ -29,11 +29,18 @@ jobs:
 
     strategy:
       matrix:
-        node-version: ["20"]
+        node-version: ["22"]
 
     defaults:
       run:
         working-directory: web/
+
+    env:
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/test"
+      JWT_SECRET: "ci-test-jwt-secret-key-minimum-32-chars-long"
+      JWT_REFRESH_SECRET: "ci-test-jwt-refresh-secret-key-minimum-32-chars"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      CRON_SECRET: "ci-test-cron-secret"
 
     steps:
       - name: Checkout repository
@@ -48,6 +55,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Type check
         run: npx tsc --noEmit

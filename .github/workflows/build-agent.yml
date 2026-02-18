@@ -1,7 +1,7 @@
 # =============================================================================
 # Vitalis Build Agent Binaries
 # =============================================================================
-# Builds cross-platform agent binaries on push to main or manual dispatch.
+# Builds cross-platform agent binaries on push to main, version tags, or manual dispatch.
 
 name: "Vitalis Build Agent Binaries"
 
@@ -9,6 +9,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
     paths:
       - "agent/**"
       - ".github/workflows/build-agent.yml"
@@ -42,11 +44,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Go 1.21
+      - name: Setup Go 1.23
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.23"
           cache-dependency-path: agent/go.sum
+
+      - name: Prepare embed config
+        run: cp cmd/agent/embed_config.yaml.example cmd/agent/embed_config.yaml
 
       - name: Download dependencies
         run: go mod download
@@ -89,3 +94,29 @@ jobs:
             build/vitalis-agent-darwin-arm64
             build/vitalis-agent-darwin-amd64
           retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vitalis-agent-binaries
+          path: build/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/vitalis-agent-windows-amd64.exe
+            build/vitalis-agent-linux-amd64
+            build/vitalis-agent-darwin-arm64
+            build/vitalis-agent-darwin-amd64
