@@ -1,11 +1,11 @@
 module github.com/vitalis-app/agent
 
-go 1.21
+go 1.24.0
 
 require (
 	github.com/shirou/gopsutil/v3 v3.24.1
 	go.uber.org/zap v1.27.0
-	golang.org/x/sys v0.17.0
+	golang.org/x/sys v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
