@@ -1,0 +1,91 @@
+# =============================================================================
+# Vitalis Build Agent Binaries
+# =============================================================================
+# Builds cross-platform agent binaries on push to main or manual dispatch.
+
+name: "Vitalis Build Agent Binaries"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "agent/**"
+      - ".github/workflows/build-agent.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string to embed in the binary"
+        required: false
+        default: "dev"
+
+concurrency:
+  group: build-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version || 'dev' }}
+
+jobs:
+  build:
+    name: Build Agent Binaries
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: agent/
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.21
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache-dependency-path: agent/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build — windows/amd64
+        run: >
+          GOOS=windows GOARCH=amd64 go build
+          -ldflags "-s -w -X main.version=${{ env.VERSION }}"
+          -o ../build/vitalis-agent-windows-amd64.exe
+          ./cmd/agent/
+
+      - name: Build — linux/amd64
+        run: >
+          GOOS=linux GOARCH=amd64 go build
+          -ldflags "-s -w -X main.version=${{ env.VERSION }}"
+          -o ../build/vitalis-agent-linux-amd64
+          ./cmd/agent/
+
+      - name: Build — darwin/arm64
+        run: >
+          GOOS=darwin GOARCH=arm64 go build
+          -ldflags "-s -w -X main.version=${{ env.VERSION }}"
+          -o ../build/vitalis-agent-darwin-arm64
+          ./cmd/agent/
+
+      - name: Build — darwin/amd64
+        run: >
+          GOOS=darwin GOARCH=amd64 go build
+          -ldflags "-s -w -X main.version=${{ env.VERSION }}"
+          -o ../build/vitalis-agent-darwin-amd64
+          ./cmd/agent/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitalis-agent-binaries
+          path: |
+            build/vitalis-agent-windows-amd64.exe
+            build/vitalis-agent-linux-amd64
+            build/vitalis-agent-darwin-arm64
+            build/vitalis-agent-darwin-amd64
+          retention-days: 30

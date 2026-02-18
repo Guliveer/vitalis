@@ -1,0 +1,5 @@
+-- Migrations directory for Drizzle Kit
+-- SQL migration files will be generated here by running:
+--   npx drizzle-kit generate
+-- And applied with:
+--   npx drizzle-kit push

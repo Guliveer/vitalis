@@ -1,0 +1,67 @@
+# =============================================================================
+# Vitalis Agent CI — Lint, Test & Build Check
+# =============================================================================
+# Runs on every push/PR that touches agent/ or this workflow file.
+
+name: "Vitalis Agent CI"
+
+on:
+  push:
+    paths:
+      - "agent/**"
+      - ".github/workflows/agent-ci.yml"
+  pull_request:
+    paths:
+      - "agent/**"
+      - ".github/workflows/agent-ci.yml"
+
+concurrency:
+  group: agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test-build:
+    name: Lint, Test & Build Check
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        go-version: ["1.21"]
+
+    defaults:
+      run:
+        working-directory: agent/
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: agent/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Lint (go vet)
+        run: go vet ./...
+
+      - name: Test with race detector & coverage
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Build check — windows/amd64
+        run: GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/agent/
+
+      - name: Build check — linux/amd64
+        run: GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/agent/
+
+      - name: Build check — darwin/arm64
+        run: GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/agent/
+
+      - name: Build check — darwin/amd64
+        run: GOOS=darwin GOARCH=amd64 go build -o /dev/null ./cmd/agent/
