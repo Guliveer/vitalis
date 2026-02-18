@@ -18,7 +18,7 @@ export const processEntrySchema = z.object({
 });
 
 export const singleMetricSchema = z.object({
-  timestamp: z.string().datetime(),
+  timestamp: z.string().datetime({ precision: 9 }),
   cpu_overall: z.number().min(0).max(100),
   cpu_cores: z
     .array(z.number().min(0).max(100))

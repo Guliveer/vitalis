@@ -1,7 +1,7 @@
 // POST /api/ingest — metric ingestion endpoint for Go agents
 // Accepts JSON batches authenticated via Authorization header or machine_token in body
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync } from "zlib";
 import { getDb } from "@/lib/db";
 import { metrics, processSnapshots, machines } from "@/lib/db/schema";
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     // Validate with metricBatchSchema (machine_token is now optional in body)
     const parsed = metricBatchSchema.safeParse(body);
     if (!parsed.success) {
-      return errorResponse("Invalid payload", 422);
+      return NextResponse.json({ error: "Invalid payload", details: parsed.error.flatten() }, { status: 422 });
     }
 
     const { machine_token: bodyToken, metrics: metricBatch } = parsed.data;

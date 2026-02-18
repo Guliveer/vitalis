@@ -86,6 +86,6 @@ export function rateLimit(
  */
 export const RATE_LIMITS = {
   auth: { windowMs: 15 * 60 * 1000, maxRequests: 10 } as RateLimitConfig, // 10 per 15 min
-  ingest: { windowMs: 60 * 1000, maxRequests: 5 } as RateLimitConfig, // 5 per minute per machine
+  ingest: { windowMs: 60 * 1000, maxRequests: 10 } as RateLimitConfig, // 10 per minute per machine
   api: { windowMs: 60 * 1000, maxRequests: 60 } as RateLimitConfig, // 60 per minute
 } as const;

@@ -30,6 +30,10 @@ const (
 
 	// requestTimeout is the HTTP request timeout for each send attempt.
 	requestTimeout = 10 * time.Second
+
+	// flushThrottleDelay is the delay between consecutive sends during a buffer flush
+	// to stay under the server's rate limit of 10 requests per minute.
+	flushThrottleDelay = 7 * time.Second
 )
 
 // Sender handles batch transmission of metrics to the API with retry logic
@@ -55,7 +59,9 @@ func New(cfg *config.Config, logger *zap.Logger, buf *buffer.Buffer) *Sender {
 
 // Send attempts to send a batch of metrics to the API.
 // On failure after all retries, the batch is buffered locally for later transmission.
-func (s *Sender) Send(metrics []models.MetricSnapshot) {
+// Returns true if the server responded with a 429 rate limit, allowing callers
+// (e.g., FlushBuffer) to stop sending further batches.
+func (s *Sender) Send(metrics []models.MetricSnapshot) bool {
 	batch := models.MetricBatch{
 		MachineToken: s.cfg.Server.MachineToken,
 		Metrics:      metrics,
@@ -64,7 +70,7 @@ func (s *Sender) Send(metrics []models.MetricSnapshot) {
 	data, err := json.Marshal(batch)
 	if err != nil {
 		s.logger.Error("Failed to marshal batch", zap.Error(err))
-		return
+		return false
 	}
 
 	// Compress with gzip
@@ -73,12 +79,12 @@ func (s *Sender) Send(metrics []models.MetricSnapshot) {
 	if _, err := gz.Write(data); err != nil {
 		s.logger.Error("Failed to compress batch", zap.Error(err))
 		s.bufferBatch(metrics)
-		return
+		return false
 	}
 	if err := gz.Close(); err != nil {
 		s.logger.Error("Failed to finalize gzip compression", zap.Error(err))
 		s.bufferBatch(metrics)
-		return
+		return false
 	}
 
 	// Retry loop with exponential backoff
@@ -94,14 +100,14 @@ func (s *Sender) Send(metrics []models.MetricSnapshot) {
 		err := s.doSend(compressed.Bytes())
 		if err == nil {
 			s.logger.Debug("Batch sent successfully", zap.Int("metrics", len(metrics)))
-			return
+			return false
 		}
 
 		// Rate limited — buffer immediately without further retries
 		if isRateLimited(err) {
 			s.logger.Warn("Rate limited by server, buffering batch", zap.Error(err))
 			s.bufferBatch(metrics)
-			return
+			return true
 		}
 
 		s.logger.Warn("Send failed",
@@ -112,6 +118,7 @@ func (s *Sender) Send(metrics []models.MetricSnapshot) {
 	// All retries exhausted — buffer locally
 	s.logger.Error("All retries exhausted, buffering batch")
 	s.bufferBatch(metrics)
+	return false
 }
 
 // doSend performs a single HTTP POST to the ingest endpoint.
@@ -164,6 +171,8 @@ func (s *Sender) bufferBatch(metrics []models.MetricSnapshot) {
 
 // FlushBuffer attempts to send all previously buffered metrics.
 // Called on startup to drain any batches that were stored during prior outages.
+// Sends are throttled with a delay between consecutive batches to stay under
+// the server's rate limit. If a 429 is received, the flush stops early.
 func (s *Sender) FlushBuffer() {
 	if s.buf == nil {
 		return
@@ -181,8 +190,24 @@ func (s *Sender) FlushBuffer() {
 
 	s.logger.Info("Flushing buffered metrics", zap.Int("batches", len(batches)))
 
-	for _, batch := range batches {
-		s.Send(batch)
+	for i, batch := range batches {
+		// Throttle between consecutive sends to avoid hitting the rate limit
+		if i > 0 {
+			s.logger.Info("Throttling buffer flush",
+				zap.Int("batch", i+1),
+				zap.Int("total", len(batches)),
+				zap.Duration("delay", flushThrottleDelay))
+			time.Sleep(flushThrottleDelay)
+		}
+
+		rateLimited := s.Send(batch)
+		if rateLimited {
+			remaining := len(batches) - i - 1
+			s.logger.Warn("Rate limited during buffer flush, stopping early",
+				zap.Int("sent", i+1),
+				zap.Int("remaining", remaining))
+			break
+		}
 	}
 }
 
