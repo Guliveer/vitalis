@@ -22,6 +22,7 @@ import (
 	"github.com/vitalis-app/agent/internal/scheduler"
 	"github.com/vitalis-app/agent/internal/sender"
 	"github.com/vitalis-app/agent/internal/service"
+	"github.com/vitalis-app/agent/internal/setup"
 )
 
 var (
@@ -31,6 +32,10 @@ var (
 	showVersion = flag.Bool("version", false, "Show version and exit")
 	install     = flag.Bool("install", false, "Install autostart entry and exit")
 	uninstall   = flag.Bool("uninstall", false, "Remove autostart entry and exit")
+	setupMode   = flag.Bool("setup", false, "Run interactive setup wizard")
+	flagMode    = flag.String("mode", "", "Install mode: system or user (used with --setup)")
+	flagURL     = flag.String("url", "", "Server URL (used with --setup or as runtime override)")
+	flagToken   = flag.String("token", "", "Machine token (used with --setup or as runtime override)")
 )
 
 func main() {
@@ -68,8 +73,26 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Load embedded configuration
-	cfg, err := config.LoadFromBytes(embeddedConfig)
+	// Handle --setup: run interactive/non-interactive setup wizard and exit.
+	if *setupMode {
+		opts := setup.Options{
+			Mode:  *flagMode,
+			URL:   *flagURL,
+			Token: *flagToken,
+		}
+		if err := setup.Run(version, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Load configuration with layered precedence:
+	// CLI flags > env vars > external YAML > embedded config > defaults
+	cfg, err := config.LoadLayered(config.CLIOverrides{
+		URL:   *flagURL,
+		Token: *flagToken,
+	}, embeddedConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)

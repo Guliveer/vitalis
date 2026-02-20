@@ -6,17 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
-const (
-	serviceName = "vitalis-agent"
-	unitPath    = "/etc/systemd/system/vitalis-agent.service"
-)
+const serviceName = "vitalis-agent"
 
-// unitTemplate is the systemd unit file written during installation.
-// The placeholder {execPath} is replaced with the actual binary path.
-const unitTemplate = `[Unit]
+const systemUnitTemplate = `[Unit]
 Description=Vitalis Monitoring Agent
 After=network-online.target
 Wants=network-online.target
@@ -41,20 +37,42 @@ PrivateTmp=true
 WantedBy=multi-user.target
 `
 
-// linuxManager implements Manager for Linux using systemd.
-type linuxManager struct{}
+const userUnitTemplate = `[Unit]
+Description=Vitalis Monitoring Agent
+After=default.target
 
-// New returns a Manager that uses systemd for service management.
-func New() Manager {
-	return &linuxManager{}
+[Service]
+Type=simple
+ExecStart={execPath}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+`
+
+type linuxManager struct {
+	mode     Mode
+	unitPath string
 }
 
-// ServiceName returns the systemd service name.
+func New() Manager { return NewWithMode(SystemMode) }
+
+func NewWithMode(mode Mode) Manager {
+	m := &linuxManager{mode: mode}
+	if mode == UserMode {
+		home, _ := os.UserHomeDir()
+		m.unitPath = filepath.Join(home, ".config", "systemd", "user", "vitalis-agent.service")
+	} else {
+		m.unitPath = "/etc/systemd/system/vitalis-agent.service"
+	}
+	return m
+}
+
 func (l *linuxManager) ServiceName() string { return serviceName }
 
-// IsInstalled checks whether the systemd unit file exists.
 func (l *linuxManager) IsInstalled() (bool, error) {
-	_, err := os.Stat(unitPath)
+	_, err := os.Stat(l.unitPath)
 	if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -64,20 +82,21 @@ func (l *linuxManager) IsInstalled() (bool, error) {
 	return true, nil
 }
 
-// Install writes the systemd unit file, reloads the daemon, enables and starts the service.
 func (l *linuxManager) Install(execPath string) error {
-	// Ensure data directory exists.
+	if l.mode == UserMode {
+		return l.installUser(execPath)
+	}
+	return l.installSystem(execPath)
+}
+
+func (l *linuxManager) installSystem(execPath string) error {
 	if err := os.MkdirAll("/var/lib/vitalis", 0755); err != nil {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
-
-	// Write the unit file with the binary path substituted.
-	unit := strings.ReplaceAll(unitTemplate, "{execPath}", execPath)
-	if err := os.WriteFile(unitPath, []byte(unit), 0644); err != nil {
+	unit := strings.ReplaceAll(systemUnitTemplate, "{execPath}", execPath)
+	if err := os.WriteFile(l.unitPath, []byte(unit), 0644); err != nil {
 		return fmt.Errorf("writing unit file: %w", err)
 	}
-
-	// Reload systemd, enable, and start the service.
 	commands := [][]string{
 		{"systemctl", "daemon-reload"},
 		{"systemctl", "enable", serviceName},
@@ -88,20 +107,45 @@ func (l *linuxManager) Install(execPath string) error {
 			return fmt.Errorf("running %s: %w", strings.Join(args, " "), err)
 		}
 	}
-
 	return nil
 }
 
-// Uninstall stops, disables, and removes the systemd service.
-func (l *linuxManager) Uninstall() error {
-	// Best-effort stop and disable; ignore errors if the service is already inactive.
-	_ = exec.Command("systemctl", "stop", serviceName).Run()
-	_ = exec.Command("systemctl", "disable", serviceName).Run()
+func (l *linuxManager) installUser(execPath string) error {
+	if err := os.MkdirAll(filepath.Dir(l.unitPath), 0755); err != nil {
+		return fmt.Errorf("creating systemd user directory: %w", err)
+	}
+	unit := strings.ReplaceAll(userUnitTemplate, "{execPath}", execPath)
+	if err := os.WriteFile(l.unitPath, []byte(unit), 0644); err != nil {
+		return fmt.Errorf("writing unit file: %w", err)
+	}
+	commands := [][]string{
+		{"systemctl", "--user", "daemon-reload"},
+		{"systemctl", "--user", "enable", serviceName},
+		{"systemctl", "--user", "start", serviceName},
+	}
+	for _, args := range commands {
+		if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
+			return fmt.Errorf("running %s: %w", strings.Join(args, " "), err)
+		}
+	}
+	return nil
+}
 
-	if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
+func (l *linuxManager) Uninstall() error {
+	if l.mode == UserMode {
+		_ = exec.Command("systemctl", "--user", "stop", serviceName).Run()
+		_ = exec.Command("systemctl", "--user", "disable", serviceName).Run()
+	} else {
+		_ = exec.Command("systemctl", "stop", serviceName).Run()
+		_ = exec.Command("systemctl", "disable", serviceName).Run()
+	}
+	if err := os.Remove(l.unitPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing unit file: %w", err)
 	}
-
-	_ = exec.Command("systemctl", "daemon-reload").Run()
+	if l.mode == UserMode {
+		_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	} else {
+		_ = exec.Command("systemctl", "daemon-reload").Run()
+	}
 	return nil
 }

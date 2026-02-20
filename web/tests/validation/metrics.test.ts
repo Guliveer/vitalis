@@ -148,19 +148,42 @@ describe("singleMetricSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects millisecond-precision timestamp (only 3 fractional digits)", () => {
+  it("accepts millisecond-precision timestamp (3 fractional digits)", () => {
     const result = singleMetricSchema.safeParse({
       ...validMetric,
       timestamp: "2026-01-15T10:30:00.000Z",
     });
-    // precision: 9 requires exactly 9 fractional digits
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects timestamp with no fractional seconds", () => {
+  it("accepts microsecond-precision timestamp (6 fractional digits)", () => {
+    const result = singleMetricSchema.safeParse({
+      ...validMetric,
+      timestamp: "2026-01-15T10:30:00.123456Z",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts timestamp with no fractional seconds", () => {
     const result = singleMetricSchema.safeParse({
       ...validMetric,
       timestamp: "2026-01-15T10:30:00Z",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects timestamp with more than 9 fractional digits", () => {
+    const result = singleMetricSchema.safeParse({
+      ...validMetric,
+      timestamp: "2026-01-15T10:30:00.1234567890Z",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-UTC timestamp (with offset)", () => {
+    const result = singleMetricSchema.safeParse({
+      ...validMetric,
+      timestamp: "2026-01-15T10:30:00+02:00",
     });
     expect(result.success).toBe(false);
   });

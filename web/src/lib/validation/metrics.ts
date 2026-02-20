@@ -18,7 +18,10 @@ export const processEntrySchema = z.object({
 });
 
 export const singleMetricSchema = z.object({
-  timestamp: z.string().datetime({ precision: 9 }),
+  timestamp: z.string().regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
+    "Invalid ISO 8601 timestamp (expected UTC with optional fractional seconds)"
+  ),
   cpu_overall: z.number().min(0).max(100),
   cpu_cores: z
     .array(z.number().min(0).max(100))

@@ -22,7 +22,8 @@ Vitalis is a production-grade monitoring platform designed for individuals and s
 ### Key Features
 
 - **Lightweight Go Agent** — < 50 MB RAM, < 2% CPU, single binary with zero dependencies
-- **Embedded Configuration** — Config is baked into the binary at build time; no external files needed
+- **Layered Configuration** — CLI flags, environment variables, YAML file, or embedded config (in that priority order)
+- **One-Command Setup** — `./vitalis-agent --setup` installs, configures, and registers as a service
 - **Auto-Install as Service** — Binary auto-registers as a system service on first run (Windows Service, systemd, launchd)
 - **Real-Time Dashboard** — CPU, RAM, disk, network charts with live process tables
 - **Offline Resilience** — Local SQLite buffer survives reboots and network outages
@@ -138,43 +139,35 @@ npm run dev
 
 The dashboard is now running at `http://localhost:3000`.
 
-### 5. Configure the Agent
+### 5. Install the Agent
 
-Edit [`agent/configs/agent.yaml`](agent/configs/agent.yaml) with your server URL and machine token:
-
-```yaml
-server:
-  url: "http://localhost:3000"
-  machine_token: "your-machine-token"
-```
-
-### 6. Build and Run the Agent
-
-The build scripts embed the selected configuration into the binary and handle cross-compilation:
+Download the latest binary from [GitHub Releases](https://github.com/Guliveer/vitalis/releases) for your platform, or build from source:
 
 ```bash
-# Build for your current platform (interactive config selection)
-./build.sh
-
-# Build with a specific config
 ./build.sh --config agent
-
-# Build for all supported platforms with a version tag
-./build.sh --all --config agent --version 1.0.0
-
-# Windows users (PowerShell)
-.\build.ps1 -Config "agent" -All -Version "1.0.0"
 ```
 
-Binaries are output to the `build/` directory. See [Building](#building) for full details.
-
-Run the agent (it auto-installs as a system service on first run):
+Run the setup wizard:
 
 ```bash
-./build/vitalis-agent
+# Interactive setup (prompts for server URL, token, and install mode)
+sudo ./build/vitalis-agent --setup
+
+# Or non-interactive for automation
+sudo ./vitalis-agent --setup --mode system --url https://your-app.vercel.app --token mtoken_your-token
 ```
 
-### 7. Register Your First User
+The wizard will:
+- Copy the binary to the appropriate system directory
+- Create a configuration file
+- Register and start a system service
+
+For per-user installation (no root required):
+```bash
+./vitalis-agent --setup --mode user
+```
+
+### 6. Register Your First User
 
 1. Open `http://localhost:3000/register`
 2. Create an account — the **first user is automatically promoted to ADMIN**
@@ -250,6 +243,50 @@ Produces binaries for all supported platforms:
 
 ---
 
+## Agent Configuration
+
+The agent supports layered configuration with the following precedence (highest first):
+
+| Source | Example |
+|--------|---------|
+| CLI flags | `--url https://... --token mtoken_...` |
+| Environment variables | `SA_SERVER_URL`, `SA_MACHINE_TOKEN`, `SA_LOG_LEVEL` |
+| External YAML file | `/etc/vitalis/agent.yaml` or `~/.vitalis/config.yaml` |
+| Embedded config | Baked in at build time via `build.sh` |
+| Defaults | `http://localhost:3000`, 15s interval |
+
+### Configuration File Reference
+
+```yaml
+server:
+  url: "https://your-app.vercel.app"    # API server URL
+  machine_token: "mtoken_your-token"     # Machine authentication token
+
+collection:
+  interval: "15s"          # How often to collect metrics
+  batch_interval: "30s"    # How often to send batches to the API
+  top_processes: 10        # Number of top processes to track
+
+buffer:
+  max_size_mb: 50          # Max local buffer size for offline storage
+  db_path: "/var/lib/vitalis"  # Directory for buffer files
+
+logging:
+  level: "info"            # Log level: debug, info, warn, error
+  file: ""                 # Log file path (empty = stdout only)
+```
+
+### Install Locations
+
+| Mode | Binary | Config | Data |
+|------|--------|--------|------|
+| System (Linux/macOS) | `/opt/vitalis/vitalis-agent` | `/etc/vitalis/agent.yaml` | `/var/lib/vitalis/` |
+| System (Windows) | `C:\Program Files\Vitalis\` | `%ProgramData%\Vitalis\` | `%ProgramData%\Vitalis\` |
+| User (Linux/macOS) | `~/.vitalis/bin/vitalis-agent` | `~/.vitalis/config.yaml` | `~/.vitalis/data/` |
+| User (Windows) | `%LOCALAPPDATA%\Vitalis\` | `%LOCALAPPDATA%\Vitalis\` | `%LOCALAPPDATA%\Vitalis\` |
+
+---
+
 ## Project Structure
 
 ```
@@ -266,6 +303,7 @@ vitalis/
 │   │   ├── autostart/              # Cross-platform service auto-installation
 │   │   ├── collector/              # Metric collectors (CPU, RAM, disk, etc.)
 │   │   ├── scheduler/              # Tick-based collection scheduler
+│   │   ├── setup/                  # Setup wizard and installation logic
 │   │   ├── buffer/                 # SQLite-backed offline buffer
 │   │   ├── sender/                 # HTTP batch sender with retry logic
 │   │   ├── config/                 # YAML + env var configuration

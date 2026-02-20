@@ -16,7 +16,7 @@ const navItems = [
   },
   {
     label: "Machines",
-    href: "/dashboard",
+    href: "/machines",
     icon: Server,
   },
 ];

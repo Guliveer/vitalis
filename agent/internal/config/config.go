@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -129,6 +130,74 @@ func Load(path string) (*Config, error) {
 	}
 
 	return LoadFromBytes(data)
+}
+
+// CLIOverrides holds values from command-line flags.
+// Empty strings are treated as "not set" and skipped.
+type CLIOverrides struct {
+	URL   string
+	Token string
+}
+
+// Locate searches standard config file paths and returns the first one found.
+// Returns empty string if no config file exists.
+func Locate() string {
+	candidates := configSearchPaths()
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// LoadLayered loads configuration with the full precedence chain:
+// CLI flags > env vars > external YAML file > embedded bytes > defaults.
+func LoadLayered(cli CLIOverrides, embedded []byte) (*Config, error) {
+	cfg := DefaultConfig()
+
+	// Layer 1: embedded config (lowest priority data layer)
+	if len(embedded) > 0 {
+		if err := yaml.Unmarshal(embedded, cfg); err != nil {
+			return nil, fmt.Errorf("parsing embedded config: %w", err)
+		}
+	}
+
+	// Layer 2: external YAML file
+	if path := Locate(); path != "" {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			if err := yaml.Unmarshal(data, cfg); err != nil {
+				return nil, fmt.Errorf("parsing config file %s: %w", path, err)
+			}
+		}
+	}
+
+	// Layer 3: environment variables
+	applyEnvOverrides(cfg)
+
+	// Layer 4: CLI flags (highest priority)
+	if cli.URL != "" {
+		cfg.Server.URL = cli.URL
+	}
+	if cli.Token != "" {
+		cfg.Server.MachineToken = cli.Token
+	}
+
+	return cfg, nil
+}
+
+// WriteConfig serializes the config to a YAML file at the given path.
+// Creates parent directories if needed.
+func WriteConfig(cfg *Config, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	return os.WriteFile(path, data, 0640)
 }
 
 // applyEnvOverrides applies environment variable overrides to the configuration.
