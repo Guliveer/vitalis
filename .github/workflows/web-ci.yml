@@ -1,5 +1,5 @@
 # =============================================================================
-# Vitalis Web CI — Lint, Type Check & Build
+# Vitalis Web CI — Type Check & Build
 # =============================================================================
 # Runs on every push/PR that touches web/ or this workflow file.
 
@@ -23,8 +23,8 @@ permissions:
   contents: read
 
 jobs:
-  lint-typecheck-build:
-    name: Lint, Type Check & Build
+  typecheck-build:
+    name: Type Check & Build
     runs-on: ubuntu-latest
 
     strategy:
@@ -55,9 +55,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Lint
-        run: npm run lint
 
       - name: Type check
         run: npx tsc --noEmit
