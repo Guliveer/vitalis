@@ -29,8 +29,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         return errorResponse("Machine not found", 404);
       }
 
-      // Check ownership or shared access
+      // Check admin, ownership, or shared access
       const hasAccess =
+        user.role === "ADMIN" ||
         machine.userId === user.sub ||
         (
           await db

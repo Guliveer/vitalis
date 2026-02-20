@@ -11,15 +11,18 @@ import { successResponse, errorResponse, validationErrorResponse } from "@/lib/u
 import { eq, and } from "drizzle-orm";
 
 /**
- * Check if a user has access to a machine (owner or shared via machine_access).
+ * Check if a user has access to a machine (owner, shared via machine_access, or admin).
  * Returns the machine record if access is granted, null otherwise.
  */
-async function checkMachineAccess(machineId: string, userId: string) {
+async function checkMachineAccess(machineId: string, userId: string, role?: string) {
   const db = getDb();
 
   const [machine] = await db.select().from(machines).where(eq(machines.id, machineId)).limit(1);
 
   if (!machine) return null;
+
+  // Admin bypass: admins have access to all machines
+  if (role === "ADMIN") return machine;
 
   // Owner always has access
   if (machine.userId === userId) return machine;
@@ -41,7 +44,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     try {
       const { id: machineId } = await context.params;
 
-      const machine = await checkMachineAccess(machineId, user.sub);
+      const machine = await checkMachineAccess(machineId, user.sub, user.role);
       if (!machine) {
         return errorResponse("Machine not found", 404);
       }

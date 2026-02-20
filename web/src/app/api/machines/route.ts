@@ -7,7 +7,7 @@ import { machines, machineAccess, metrics } from "@/lib/db/schema";
 import { withAuth, type AuthContext } from "@/lib/auth/middleware";
 import { createMachineSchema } from "@/lib/validation/machines";
 import { successResponse, errorResponse, validationErrorResponse } from "@/lib/utils/response";
-import { eq, desc, or, sql } from "drizzle-orm";
+import { eq, desc, or, sql, type InferSelectModel } from "drizzle-orm";
 import crypto from "crypto";
 
 // Two-minute threshold for online status
@@ -17,29 +17,37 @@ export const GET = withAuth(async (request: NextRequest, { user }: AuthContext):
   try {
     const db = getDb();
 
-    // Get machines owned by user
-    const ownedMachines = await db.select().from(machines).where(eq(machines.userId, user.sub));
+    let allMachines: InferSelectModel<typeof machines>[];
 
-    // Get machines shared with user via machine_access
-    const sharedAccess = await db.select({ machineId: machineAccess.machineId }).from(machineAccess).where(eq(machineAccess.userId, user.sub));
+    if (user.role === "ADMIN") {
+      // Admin bypass: fetch all machines without ownership/shared filtering
+      allMachines = await db.select().from(machines);
+    } else {
+      // Get machines owned by user
+      const ownedMachines = await db.select().from(machines).where(eq(machines.userId, user.sub));
 
-    const sharedMachineIds = sharedAccess.map((a) => a.machineId);
+      // Get machines shared with user via machine_access
+      const sharedAccess = await db.select({ machineId: machineAccess.machineId }).from(machineAccess).where(eq(machineAccess.userId, user.sub));
 
-    let sharedMachines: (typeof ownedMachines)[number][] = [];
-    if (sharedMachineIds.length > 0) {
-      sharedMachines = await db
-        .select()
-        .from(machines)
-        .where(or(...sharedMachineIds.map((id) => eq(machines.id, id))));
+      const sharedMachineIds = sharedAccess.map((a) => a.machineId);
+
+      let sharedMachines: (typeof ownedMachines)[number][] = [];
+      if (sharedMachineIds.length > 0) {
+        sharedMachines = await db
+          .select()
+          .from(machines)
+          .where(or(...sharedMachineIds.map((id) => eq(machines.id, id))));
+      }
+
+      // Combine and deduplicate
+      const allMachinesMap = new Map<string, (typeof ownedMachines)[number]>();
+      for (const m of [...ownedMachines, ...sharedMachines]) {
+        allMachinesMap.set(m.id, m);
+      }
+
+      allMachines = Array.from(allMachinesMap.values());
     }
 
-    // Combine and deduplicate
-    const allMachinesMap = new Map<string, (typeof ownedMachines)[number]>();
-    for (const m of [...ownedMachines, ...sharedMachines]) {
-      allMachinesMap.set(m.id, m);
-    }
-
-    const allMachines = Array.from(allMachinesMap.values());
     const now = Date.now();
 
     // Enrich with online status and latest metric summary
