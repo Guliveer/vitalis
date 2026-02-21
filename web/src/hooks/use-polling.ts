@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type DependencyList } from "react";
 
 /**
  * Calls `callback` immediately and then every `intervalMs` milliseconds.
  * Pauses when the browser tab is hidden (Page Visibility API).
  * Resumes with an immediate call when the tab becomes visible again.
+ *
+ * @param callback  Async function to invoke on each tick.
+ * @param intervalMs  Polling interval in milliseconds.
+ * @param deps  Optional dependency list — when any dep changes the effect
+ *              re-runs, triggering an immediate fetch and restarting the interval.
  */
-export function usePolling(callback: () => void, intervalMs: number) {
+export function usePolling(callback: () => void, intervalMs: number, deps: DependencyList = []) {
   const savedCallback = useRef(callback);
 
   useEffect(() => {
@@ -45,5 +50,6 @@ export function usePolling(callback: () => void, intervalMs: number) {
       stop();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [intervalMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intervalMs, ...deps]);
 }

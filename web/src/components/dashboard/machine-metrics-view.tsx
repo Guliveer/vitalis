@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { usePolling } from "@/hooks/use-polling";
 import { authFetch } from "@/lib/auth/fetch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,6 @@ interface MetricRow {
   uptimeSeconds: number | null;
   cpuTemp: number | null;
   gpuTemp: number | null;
-  processes?: ProcessEntry[] | null;
 }
 
 interface MachineMetricsViewProps {
@@ -48,6 +47,7 @@ const TIME_RANGES = [
 export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
   const [selectedRange, setSelectedRange] = useState(1);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
+  const [processes, setProcesses] = useState<ProcessEntry[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -68,7 +68,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
       const from = new Date(to.getTime() - hours * 60 * 60 * 1000);
 
       const resolution = hours <= 24 ? "raw" : "hourly";
-      const includeProcesses = hours <= 1 ? "true" : "false";
+      const includeProcesses = "true";
 
       try {
         const params = new URLSearchParams({
@@ -90,6 +90,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
         }
 
         setMetrics(data.data?.metrics ?? []);
+        setProcesses(data.data?.processes ?? []);
         setError("");
         hasDataRef.current = true;
         lastFetchedRangeRef.current = hours;
@@ -110,11 +111,22 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
       fetchMetrics(selectedRange);
     }, [fetchMetrics, selectedRange]),
     30_000,
+    [selectedRange],
   );
 
   const latestMetric = metrics.length > 0 ? metrics[0] : null;
-  const latestProcesses: ProcessEntry[] = latestMetric?.processes && Array.isArray(latestMetric.processes) ? latestMetric.processes : [];
   const latestDisk: DiskUsageEntry[] = latestMetric?.diskUsage && Array.isArray(latestMetric.diskUsage) ? latestMetric.diskUsage : [];
+
+  // Memoised chart data transformations to avoid new array references on every render
+  const cpuData = useMemo(() => metrics.map((m) => ({ timestamp: m.timestamp, cpuOverall: m.cpuOverall })), [metrics]);
+
+  const cpuCoresData = useMemo(() => metrics.map((m) => ({ timestamp: m.timestamp, cpuCores: m.cpuCores })), [metrics]);
+
+  const ramData = useMemo(() => metrics.map((m) => ({ timestamp: m.timestamp, ramUsed: m.ramUsed, ramTotal: m.ramTotal })), [metrics]);
+
+  const temperatureData = useMemo(() => metrics.map((m) => ({ timestamp: m.timestamp, cpuTemp: m.cpuTemp, gpuTemp: m.gpuTemp })), [metrics]);
+
+  const networkData = useMemo(() => metrics.map((m) => ({ timestamp: m.timestamp, networkRx: m.networkRx, networkTx: m.networkTx })), [metrics]);
 
   return (
     <div className="space-y-6">
@@ -188,12 +200,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
                 <CardTitle>CPU Usage</CardTitle>
               </CardHeader>
               <CardContent>
-                <CpuChart
-                  data={metrics.map((m) => ({
-                    timestamp: m.timestamp,
-                    cpuOverall: m.cpuOverall,
-                  }))}
-                />
+                <CpuChart data={cpuData} />
               </CardContent>
             </Card>
 
@@ -202,12 +209,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
                 <CardTitle>Per-Core CPU Usage</CardTitle>
               </CardHeader>
               <CardContent>
-                <CpuCoresChart
-                  data={metrics.map((m) => ({
-                    timestamp: m.timestamp,
-                    cpuCores: m.cpuCores,
-                  }))}
-                />
+                <CpuCoresChart data={cpuCoresData} />
               </CardContent>
             </Card>
 
@@ -217,13 +219,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
                 <CardTitle>RAM Usage</CardTitle>
               </CardHeader>
               <CardContent>
-                <RamChart
-                  data={metrics.map((m) => ({
-                    timestamp: m.timestamp,
-                    ramUsed: m.ramUsed,
-                    ramTotal: m.ramTotal,
-                  }))}
-                />
+                <RamChart data={ramData} />
               </CardContent>
             </Card>
 
@@ -232,13 +228,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
                 <CardTitle>Temperature History</CardTitle>
               </CardHeader>
               <CardContent>
-                <TemperatureChart
-                  data={metrics.map((m) => ({
-                    timestamp: m.timestamp,
-                    cpuTemp: m.cpuTemp,
-                    gpuTemp: m.gpuTemp,
-                  }))}
-                />
+                <TemperatureChart data={temperatureData} />
               </CardContent>
             </Card>
 
@@ -248,13 +238,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
                 <CardTitle>Network I/O</CardTitle>
               </CardHeader>
               <CardContent>
-                <NetworkChart
-                  data={metrics.map((m) => ({
-                    timestamp: m.timestamp,
-                    networkRx: m.networkRx,
-                    networkTx: m.networkTx,
-                  }))}
-                />
+                <NetworkChart data={networkData} />
               </CardContent>
             </Card>
 
@@ -269,13 +253,13 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
           </div>
 
           {/* Process Table */}
-          {latestProcesses.length > 0 && (
+          {processes.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Top Processes</CardTitle>
               </CardHeader>
               <CardContent>
-                <ProcessTable processes={latestProcesses} />
+                <ProcessTable processes={processes} />
               </CardContent>
             </Card>
           )}

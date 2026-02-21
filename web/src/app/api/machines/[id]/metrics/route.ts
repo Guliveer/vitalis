@@ -6,7 +6,7 @@ import { metrics, metricsHourly, metricsDaily, processSnapshots, machines, machi
 import { withAuth, type AuthContext } from "@/lib/auth/middleware";
 import { metricQuerySchema } from "@/lib/validation/machines";
 import { successResponse, errorResponse } from "@/lib/utils/response";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 
 // Maximum results per resolution
 const MAX_RAW = 1000;
@@ -64,6 +64,25 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         return errorResponse("'from' must be before 'to'", 400);
       }
 
+      // Helper: fetch the latest process snapshot for a given machine within a time range.
+      // Returns the processes array from the most recent metric's snapshot, or null if none found.
+      async function fetchLatestProcessSnapshot(db: ReturnType<typeof getDb>, machineId: string, fromDate: Date, toDate: Date): Promise<unknown[] | null> {
+        // Find the most recent raw metric for this machine in the time range
+        const [latestMetric] = await db
+          .select({ id: metrics.id })
+          .from(metrics)
+          .where(and(eq(metrics.machineId, machineId), gte(metrics.timestamp, fromDate), lte(metrics.timestamp, toDate)))
+          .orderBy(desc(metrics.timestamp))
+          .limit(1);
+
+        if (!latestMetric) return null;
+
+        // Fetch the process snapshot for that metric
+        const [snapshot] = await db.select().from(processSnapshots).where(eq(processSnapshots.metricId, latestMetric.id)).limit(1);
+
+        return snapshot ? (snapshot.processes as unknown[]) : null;
+      }
+
       // Query based on resolution
       switch (parsed.data.resolution) {
         case "raw": {
@@ -79,38 +98,22 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
             .orderBy(desc(metrics.timestamp))
             .limit(MAX_RAW);
 
-          // Optionally include process snapshots
-          let processData: Record<string, unknown> = {};
+          // Optionally include the latest process snapshot (single query, no N+1)
+          let processes: unknown[] | null = null;
           if (includeProcesses && rawMetrics.length > 0) {
-            const metricIds = rawMetrics.map((m) => m.id);
-            const snapshots = await db
-              .select()
-              .from(processSnapshots)
-              .where(
-                metricIds.length === 1
-                  ? eq(processSnapshots.metricId, metricIds[0])
-                  : // For multiple IDs, query each and merge
-                    eq(processSnapshots.metricId, metricIds[0]),
-              );
+            // Metrics are ordered DESC, so the first entry is the most recent
+            const latestMetricId = rawMetrics[0].id;
+            const [snapshot] = await db.select().from(processSnapshots).where(eq(processSnapshots.metricId, latestMetricId)).limit(1);
 
-            // For efficiency with multiple IDs, query all at once
-            let allSnapshots = snapshots;
-            if (metricIds.length > 1) {
-              const snapshotResults = await Promise.all(metricIds.map((id) => db.select().from(processSnapshots).where(eq(processSnapshots.metricId, id))));
-              allSnapshots = snapshotResults.flat();
-            }
-
-            for (const snap of allSnapshots) {
-              processData[snap.metricId] = snap.processes;
-            }
+            processes = snapshot ? (snapshot.processes as unknown[]) : null;
           }
 
-          const result = rawMetrics.map((m) => ({
-            ...m,
-            processes: includeProcesses ? (processData[m.id] ?? null) : undefined,
-          }));
-
-          return successResponse({ metrics: result, resolution: "raw", count: result.length });
+          return successResponse({
+            metrics: rawMetrics,
+            processes: includeProcesses ? (processes ?? []) : undefined,
+            resolution: "raw",
+            count: rawMetrics.length,
+          });
         }
 
         case "hourly": {
@@ -121,7 +124,18 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
             .orderBy(desc(metricsHourly.hour))
             .limit(MAX_HOURLY);
 
-          return successResponse({ metrics: hourlyMetrics, resolution: "hourly", count: hourlyMetrics.length });
+          // Fetch latest process snapshot if requested
+          let processes: unknown[] | null = null;
+          if (includeProcesses) {
+            processes = await fetchLatestProcessSnapshot(db, machineId, fromDate, toDate);
+          }
+
+          return successResponse({
+            metrics: hourlyMetrics,
+            processes: includeProcesses ? (processes ?? []) : undefined,
+            resolution: "hourly",
+            count: hourlyMetrics.length,
+          });
         }
 
         case "daily": {
@@ -136,7 +150,18 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
             .orderBy(desc(metricsDaily.day))
             .limit(MAX_DAILY);
 
-          return successResponse({ metrics: dailyMetrics, resolution: "daily", count: dailyMetrics.length });
+          // Fetch latest process snapshot if requested
+          let processes: unknown[] | null = null;
+          if (includeProcesses) {
+            processes = await fetchLatestProcessSnapshot(db, machineId, fromDate, toDate);
+          }
+
+          return successResponse({
+            metrics: dailyMetrics,
+            processes: includeProcesses ? (processes ?? []) : undefined,
+            resolution: "daily",
+            count: dailyMetrics.length,
+          });
         }
 
         default:

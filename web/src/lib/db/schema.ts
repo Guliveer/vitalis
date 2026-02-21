@@ -81,13 +81,17 @@ export const metrics = pgTable(
 // ============================================================
 // PROCESS SNAPSHOTS
 // ============================================================
-export const processSnapshots = pgTable("process_snapshots", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  metricId: uuid("metric_id")
-    .notNull()
-    .references(() => metrics.id, { onDelete: "cascade" }),
-  processes: jsonb("processes").notNull(),
-});
+export const processSnapshots = pgTable(
+  "process_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    metricId: uuid("metric_id")
+      .notNull()
+      .references(() => metrics.id, { onDelete: "cascade" }),
+    processes: jsonb("processes").notNull(),
+  },
+  (table) => [index("process_snapshots_metric_id_idx").on(table.metricId)],
+);
 
 // ============================================================
 // HOURLY AGGREGATES (30-day retention)
