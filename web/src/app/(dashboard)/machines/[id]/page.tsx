@@ -1,33 +1,42 @@
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { MachineMetricsView } from "@/components/dashboard/machine-metrics-view";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { getSession } from "@/lib/auth/session";
+import { getDb } from "@/lib/db";
+import { machines, machineAccess } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import type { Machine } from "@/types/machines";
 
-interface MachineResponse {
-  data?: {
-    machine?: Machine;
-  };
-}
+export const dynamic = "force-dynamic";
 
-async function getMachine(id: string): Promise<Machine | null> {
-  const cookieStore = await cookies();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
+async function getMachine(id: string): Promise<Omit<Machine, "machineToken"> | null> {
   try {
-    const res = await fetch(`${appUrl}/api/machines/${id}`, {
-      headers: {
-        cookie: cookieStore.toString(),
-      },
-      cache: "no-store",
-    });
+    const session = await getSession();
+    if (!session) return null;
 
-    if (!res.ok) return null;
+    const db = getDb();
 
-    const data: MachineResponse = await res.json();
-    return data.data?.machine ?? null;
-  } catch {
+    const [machine] = await db.select().from(machines).where(eq(machines.id, id)).limit(1);
+    if (!machine) return null;
+
+    // Admin bypass: admins have access to all machines
+    if (session.role !== "ADMIN" && machine.userId !== session.sub) {
+      // Check shared access
+      const [access] = await db
+        .select()
+        .from(machineAccess)
+        .where(and(eq(machineAccess.machineId, id), eq(machineAccess.userId, session.sub)))
+        .limit(1);
+
+      if (!access) return null;
+    }
+
+    // Strip machineToken from response (same as API route)
+    const { machineToken, ...machineData } = machine;
+    return machineData;
+  } catch (error) {
+    console.error("getMachine error:", error);
     return null;
   }
 }

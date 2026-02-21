@@ -17,6 +17,12 @@ export interface MachineWithStatus extends Machine {
     cpuOverall: number;
     ramUsed: number;
     ramTotal: number;
+    networkRx: number | null;
+    networkTx: number | null;
+    diskUsage: Array<{ mount: string; fs: string; total: number; used: number; free: number }> | null;
+    uptimeSeconds: number | null;
+    cpuTemp: number | null;
+    gpuTemp: number | null;
   };
 }
 

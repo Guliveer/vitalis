@@ -3,8 +3,14 @@
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatRelativeTime, formatPercentage, formatBytes } from "@/lib/utils/format";
+import { formatRelativeTime, formatPercentage, formatBytes, formatUptime } from "@/lib/utils/format";
+import { Clock, Thermometer } from "lucide-react";
 import type { MachineWithStatus } from "@/types/machines";
+
+function safeFormatUptime(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  return formatUptime(seconds);
+}
 
 interface MachineCardProps {
   machine: MachineWithStatus;
@@ -67,6 +73,18 @@ export function MachineCard({ machine }: MachineCardProps) {
               </div>
               <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                 <div className="h-full rounded-full bg-emerald-500 transition-all duration-300" style={{ width: `${ramPercent ?? 0}%` }} />
+              </div>
+            </div>
+
+            {/* Uptime & Temperature */}
+            <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{safeFormatUptime(machine.lastMetric.uptimeSeconds)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Thermometer className="h-3 w-3" />
+                <span>{machine.lastMetric.cpuTemp != null ? `${machine.lastMetric.cpuTemp.toFixed(1)}°C` : "—"}</span>
               </div>
             </div>
           </div>

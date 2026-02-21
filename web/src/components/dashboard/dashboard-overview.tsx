@@ -6,8 +6,8 @@ import { usePolling } from "@/hooks/use-polling";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPercentage, formatBytes, formatRelativeTime } from "@/lib/utils/format";
-import { Monitor, Cpu, MemoryStick, Wifi } from "lucide-react";
+import { formatPercentage, formatBytes, formatRelativeTime, formatUptime, formatTemperature } from "@/lib/utils/format";
+import { Monitor, Cpu, MemoryStick, Wifi, Thermometer, ArrowDownUp } from "lucide-react";
 import type { MachineWithStatus } from "@/types/machines";
 
 const POLL_INTERVAL = 30_000;
@@ -20,6 +20,11 @@ function getColorClass(value: number): string {
   if (value >= 90) return "text-red-400";
   if (value >= 70) return "text-amber-400";
   return "text-emerald-400";
+}
+
+function safeFormatUptime(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  return formatUptime(seconds);
 }
 
 function safeAverage(values: number[]): number | null {
@@ -122,6 +127,13 @@ export function DashboardOverview() {
 
   const onlineRate = totalCount > 0 ? (onlineCount / totalCount) * 100 : 0;
 
+  const tempValues = onlineMachines.filter((m) => m.lastMetric?.cpuTemp != null).map((m) => m.lastMetric!.cpuTemp!);
+  const avgTemp = safeAverage(tempValues);
+
+  const totalNetworkRx = onlineMachines.reduce((sum, m) => sum + (m.lastMetric?.networkRx ?? 0), 0);
+  const totalNetworkTx = onlineMachines.reduce((sum, m) => sum + (m.lastMetric?.networkTx ?? 0), 0);
+  const hasNetworkData = onlineMachines.some((m) => m.lastMetric?.networkRx != null || m.lastMetric?.networkTx != null);
+
   // Sort: online first, then alphabetically by name
   const sortedMachines = [...machines].sort((a, b) => {
     if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
@@ -134,8 +146,8 @@ export function DashboardOverview() {
     return (
       <div>
         <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8">
+          {Array.from({ length: 6 }).map((_, i) => (
             <SummaryCardSkeleton key={i} />
           ))}
         </div>
@@ -165,7 +177,7 @@ export function DashboardOverview() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8">
         {/* Total Machines */}
         <SummaryCard icon={<Monitor className="h-5 w-5 text-muted-foreground" />} label="Total Machines" value={totalCount} subtitle={totalCount > 0 ? `${onlineCount} online · ${offlineCount} offline` : "No machines registered"} />
 
@@ -177,6 +189,25 @@ export function DashboardOverview() {
 
         {/* Online Rate */}
         <SummaryCard icon={<Wifi className="h-5 w-5 text-muted-foreground" />} label="Online Rate" value={totalCount > 0 ? <span className={getColorClass(100 - onlineRate)}>{formatPercentage(onlineRate)}</span> : <span className="text-muted-foreground">N/A</span>} subtitle={totalCount > 0 ? `${onlineCount}/${totalCount} Online` : "No machines registered"} />
+
+        {/* Avg Temperature */}
+        <SummaryCard icon={<Thermometer className="h-5 w-5 text-muted-foreground" />} label="Avg Temperature" value={avgTemp != null ? <span>{avgTemp.toFixed(1)}°C</span> : <span className="text-muted-foreground">N/A</span>} subtitle={avgTemp != null ? `Across ${tempValues.length} machine${tempValues.length !== 1 ? "s" : ""}` : "No temp data"} />
+
+        {/* Network I/O */}
+        <SummaryCard
+          icon={<ArrowDownUp className="h-5 w-5 text-muted-foreground" />}
+          label="Network I/O"
+          value={
+            hasNetworkData ? (
+              <span className="text-base">
+                ↓ {formatBytes(totalNetworkRx)} / ↑ {formatBytes(totalNetworkTx)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">N/A</span>
+            )
+          }
+          subtitle={hasNetworkData ? "Total across online machines" : "No network data"}
+        />
       </div>
 
       {/* Machine status table */}
@@ -184,11 +215,13 @@ export function DashboardOverview() {
         <Card>
           <CardContent className="p-0">
             {/* Table header */}
-            <div className="grid grid-cols-[1fr_100px_90px_90px_110px] gap-2 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[1fr_100px_90px_90px_80px_70px_110px] gap-2 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
               <span>Machine</span>
               <span>Status</span>
               <span className="text-right">CPU</span>
               <span className="text-right">RAM</span>
+              <span className="text-right">Uptime</span>
+              <span className="text-right">Temp</span>
               <span className="text-right">Last Seen</span>
             </div>
 
@@ -202,7 +235,7 @@ export function DashboardOverview() {
               return (
                 <div
                   key={machine.id}
-                  className="grid grid-cols-[1fr_100px_90px_90px_110px] gap-2 px-4 py-3 border-b last:border-b-0 items-center cursor-pointer transition-colors hover:bg-muted/50"
+                  className="grid grid-cols-[1fr_100px_90px_90px_80px_70px_110px] gap-2 px-4 py-3 border-b last:border-b-0 items-center cursor-pointer transition-colors hover:bg-muted/50"
                   role="link"
                   tabIndex={0}
                   onClick={() => router.push(`/machines/${machine.id}`)}
@@ -229,6 +262,10 @@ export function DashboardOverview() {
                   <div className="text-right text-sm">{cpuPercent != null ? <span className={getColorClass(cpuPercent)}>{formatPercentage(cpuPercent)}</span> : <span className="text-muted-foreground">—</span>}</div>
 
                   <div className="text-right text-sm">{ramPercent != null ? <span className={getColorClass(ramPercent)}>{formatPercentage(ramPercent)}</span> : <span className="text-muted-foreground">—</span>}</div>
+
+                  <div className="text-right text-xs text-muted-foreground">{safeFormatUptime(machine.lastMetric?.uptimeSeconds)}</div>
+
+                  <div className="text-right text-sm">{machine.lastMetric?.cpuTemp != null ? <span>{machine.lastMetric.cpuTemp.toFixed(1)}°C</span> : <span className="text-muted-foreground">—</span>}</div>
 
                   <div className="text-right text-xs text-muted-foreground">{machine.lastSeen ? formatRelativeTime(machine.lastSeen) : "Never"}</div>
                 </div>

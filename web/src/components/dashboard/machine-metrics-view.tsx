@@ -7,7 +7,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CpuChart } from "@/components/charts/cpu-chart";
+import CpuCoresChart from "@/components/charts/cpu-cores-chart";
 import { RamChart } from "@/components/charts/ram-chart";
+import TemperatureChart from "@/components/charts/temperature-chart";
 import { DiskChart } from "@/components/charts/disk-chart";
 import { NetworkChart } from "@/components/charts/network-chart";
 import { CurrentStatePanel } from "@/components/dashboard/current-state-panel";
@@ -161,7 +163,8 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
           </section>
 
           {/* Charts */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+            {/* Row 1: CPU Usage, Per-Core CPU Usage */}
             <Card>
               <CardHeader>
                 <CardTitle>CPU Usage</CardTitle>
@@ -178,6 +181,21 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
 
             <Card>
               <CardHeader>
+                <CardTitle>Per-Core CPU Usage</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CpuCoresChart
+                  data={metrics.map((m) => ({
+                    timestamp: m.timestamp,
+                    cpuCores: m.cpuCores,
+                  }))}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Row 2: RAM Usage, Temperature History */}
+            <Card>
+              <CardHeader>
                 <CardTitle>RAM Usage</CardTitle>
               </CardHeader>
               <CardContent>
@@ -191,6 +209,22 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>Temperature History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TemperatureChart
+                  data={metrics.map((m) => ({
+                    timestamp: m.timestamp,
+                    cpuTemp: m.cpuTemp,
+                    gpuTemp: m.gpuTemp,
+                  }))}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Row 3: Network I/O, Disk Usage */}
             <Card>
               <CardHeader>
                 <CardTitle>Network I/O</CardTitle>

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { formatBytes, formatPercentage } from "@/lib/utils/format";
+import { formatPercentage } from "@/lib/utils/format";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ProcessEntry } from "@/types/metrics";
@@ -24,7 +24,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
           <TableHead>PID</TableHead>
           <TableHead>Name</TableHead>
           <TableHead className="text-right">CPU%</TableHead>
-          <TableHead className="text-right">Memory</TableHead>
+          <TableHead className="text-right">Memory %</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
@@ -36,7 +36,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
             <TableCell className="text-right font-mono">
               <span className={cn(proc.cpu >= 80 ? "text-red-400" : proc.cpu >= 50 ? "text-amber-400" : "")}>{formatPercentage(proc.cpu)}</span>
             </TableCell>
-            <TableCell className="text-right font-mono">{formatBytes(proc.memory)}</TableCell>
+            <TableCell className="text-right font-mono">{proc.memory.toFixed(1)}%</TableCell>
             <TableCell>
               <Badge variant={proc.status === "running" ? "success" : proc.status === "sleeping" ? "secondary" : "warning"}>{proc.status}</Badge>
             </TableCell>

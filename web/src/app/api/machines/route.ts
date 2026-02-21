@@ -61,6 +61,12 @@ export const GET = withAuth(async (request: NextRequest, { user }: AuthContext):
             cpuOverall: metrics.cpuOverall,
             ramUsed: metrics.ramUsed,
             ramTotal: metrics.ramTotal,
+            networkRx: metrics.networkRx,
+            networkTx: metrics.networkTx,
+            diskUsage: metrics.diskUsage,
+            uptimeSeconds: metrics.uptimeSeconds,
+            cpuTemp: metrics.cpuTemp,
+            gpuTemp: metrics.gpuTemp,
           })
           .from(metrics)
           .where(eq(metrics.machineId, machine.id))
@@ -81,6 +87,12 @@ export const GET = withAuth(async (request: NextRequest, { user }: AuthContext):
                 cpuOverall: latestMetric.cpuOverall,
                 ramUsed: latestMetric.ramUsed,
                 ramTotal: latestMetric.ramTotal,
+                networkRx: latestMetric.networkRx ?? null,
+                networkTx: latestMetric.networkTx ?? null,
+                diskUsage: latestMetric.diskUsage ?? null,
+                uptimeSeconds: latestMetric.uptimeSeconds ?? null,
+                cpuTemp: latestMetric.cpuTemp ?? null,
+                gpuTemp: latestMetric.gpuTemp ?? null,
               }
             : undefined,
         };
