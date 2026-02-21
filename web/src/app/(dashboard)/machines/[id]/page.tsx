@@ -58,7 +58,12 @@ export default async function MachineDetailPage({ params }: { params: Promise<{ 
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-2xl font-bold">{machine.name}</h1>
           <Badge variant={isOnline ? "success" : "danger"}>{isOnline ? "Online" : "Offline"}</Badge>
-          {machine.os && <Badge variant="secondary">{machine.os}</Badge>}
+          {(machine.osName || machine.os) && (
+            <Badge variant="secondary">
+              {machine.osName || machine.os}
+              {machine.osVersion ? ` ${machine.osVersion}` : ""}
+            </Badge>
+          )}
           {machine.arch && <Badge variant="secondary">{machine.arch}</Badge>}
         </div>
         {machine.lastSeen && <p className="text-sm text-muted-foreground">Last seen {formatRelativeTime(machine.lastSeen)}</p>}

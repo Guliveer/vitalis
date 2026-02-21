@@ -18,6 +18,8 @@ type MetricSnapshot struct {
 	CPUTemp       *float64      `json:"cpu_temp"`
 	GPUTemp       *float64      `json:"gpu_temp"`
 	Processes     []ProcessInfo `json:"processes"`
+	OSVersion     string        `json:"os_version,omitempty"`
+	OSName        string        `json:"os_name,omitempty"`
 }
 
 // DiskInfo represents usage for a single disk/partition.

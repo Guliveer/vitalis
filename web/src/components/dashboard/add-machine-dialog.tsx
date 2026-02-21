@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileText, Loader2, Plus } from "lucide-react";
+import { authFetch } from "@/lib/auth/fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,7 +73,7 @@ export function AddMachineDialog({ onMachineCreated }: { onMachineCreated?: () =
     setLoading(true);
 
     try {
-      const res = await fetch("/api/machines", {
+      const res = await authFetch("/api/machines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -136,9 +137,7 @@ export function AddMachineDialog({ onMachineCreated }: { onMachineCreated?: () =
           type,
         });
 
-        const res = await fetch(`/api/machines/${machineId}/download?${params.toString()}`, {
-          credentials: "include",
-        });
+        const res = await authFetch(`/api/machines/${machineId}/download?${params.toString()}`);
 
         if (!res.ok) {
           if (res.status === 404 && type === "zip") {

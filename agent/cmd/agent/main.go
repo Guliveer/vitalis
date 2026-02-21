@@ -19,6 +19,7 @@ import (
 	"github.com/vitalis-app/agent/internal/collector"
 	"github.com/vitalis-app/agent/internal/config"
 	"github.com/vitalis-app/agent/internal/models"
+	"github.com/vitalis-app/agent/internal/platform"
 	"github.com/vitalis-app/agent/internal/scheduler"
 	"github.com/vitalis-app/agent/internal/sender"
 	"github.com/vitalis-app/agent/internal/service"
@@ -181,6 +182,10 @@ func runAgent(ctx context.Context, cfg *config.Config, logger *zap.Logger) {
 	// Flush any buffered metrics from previous runs
 	snd.FlushBuffer()
 
+	// Initialize platform-specific provider (GPU temp fallback, shutdown time, etc.)
+	plat := platform.New()
+	logger.Info("Platform initialized", zap.String("platform", plat.Name()))
+
 	// Initialize collector registry and register all collectors
 	registry := collector.NewRegistry(logger)
 	registry.Register(collector.NewCPUCollector())
@@ -189,8 +194,9 @@ func runAgent(ctx context.Context, cfg *config.Config, logger *zap.Logger) {
 	registry.Register(collector.NewNetworkCollector())
 	registry.Register(collector.NewProcessCollector(cfg.Collection.TopProcesses))
 	registry.Register(collector.NewUptimeCollector())
-	registry.Register(collector.NewTemperatureCollector())
+	registry.Register(collector.NewTemperatureCollector(plat, logger))
 	registry.Register(collector.NewShutdownCollector())
+	registry.Register(collector.NewOSInfoCollector())
 
 	// Initialize scheduler with batch-ready callback
 	sched := scheduler.New(registry, cfg, logger)

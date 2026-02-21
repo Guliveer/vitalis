@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Server } from "lucide-react";
 import { usePolling } from "@/hooks/use-polling";
+import { authFetch } from "@/lib/auth/fetch";
 import { MachineCard } from "./machine-card";
 import { AddMachineDialog } from "./add-machine-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,28 +13,35 @@ const POLL_INTERVAL = 30_000;
 
 export function MachineListView({ title }: { title: string }) {
   const [machines, setMachines] = useState<MachineWithStatus[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Track whether data has been loaded at least once
+  const hasDataRef = useRef(false);
 
   const fetchMachines = useCallback(async () => {
     try {
-      const res = await fetch("/api/machines");
+      const res = await authFetch("/api/machines");
       if (!res.ok) {
         throw new Error("Failed to fetch machines");
       }
       const data = await res.json();
       setMachines(data.data?.machines ?? []);
       setError("");
+      hasDataRef.current = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch machines");
+      // Only set error if we have no data yet; otherwise keep showing stale data
+      if (!hasDataRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to fetch machines");
+      }
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, []);
 
   usePolling(fetchMachines, POLL_INTERVAL);
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -50,7 +58,7 @@ export function MachineListView({ title }: { title: string }) {
     );
   }
 
-  if (error) {
+  if (error && !hasDataRef.current) {
     return (
       <div>
         <div className="flex items-center justify-between mb-6">

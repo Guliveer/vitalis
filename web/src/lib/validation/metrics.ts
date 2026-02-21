@@ -43,6 +43,8 @@ export const singleMetricSchema = z.object({
     .max(50)
     .nullable()
     .transform((v) => v ?? []),
+  os_version: z.string().max(100).optional(),
+  os_name: z.string().max(100).optional(),
 });
 
 export const metricBatchSchema = z.object({

@@ -44,7 +44,12 @@ export function MachineCard({ machine }: MachineCardProps) {
             {machine.lastSeen && <p className="text-xs text-muted-foreground mt-0.5">{formatRelativeTime(machine.lastSeen)}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {machine.os && <Badge variant="secondary">{machine.os}</Badge>}
+            {(machine.osName || machine.os) && (
+              <Badge variant="secondary">
+                {machine.osName || machine.os}
+                {machine.osVersion ? ` ${machine.osVersion}` : ""}
+              </Badge>
+            )}
             <Badge variant={machine.isOnline ? "success" : "danger"}>{machine.isOnline ? "Online" : "Offline"}</Badge>
           </div>
         </div>

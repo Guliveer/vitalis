@@ -162,5 +162,13 @@ func (s *Scheduler) assembleSnapshot(results map[string]interface{}) models.Metr
 		}
 	}
 
+	// OS Info
+	if data, ok := results["osinfo"]; ok {
+		if osinfo, ok := data.(collector.OSInfoResult); ok {
+			snapshot.OSVersion = osinfo.OSVersion
+			snapshot.OSName = osinfo.OSName
+		}
+	}
+
 	return snapshot
 }

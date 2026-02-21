@@ -108,8 +108,18 @@ export async function POST(request: NextRequest) {
       await db.insert(processSnapshots).values(processValues);
     }
 
-    // Update machine's last_seen timestamp
-    await db.update(machines).set({ lastSeen: new Date() }).where(eq(machines.id, machine.id));
+    // Extract OS info from the latest metric snapshot (if present)
+    const latestSnapshot = metricBatch[metricBatch.length - 1];
+    const machineUpdate: Record<string, unknown> = { lastSeen: new Date() };
+    if (latestSnapshot.os_name) {
+      machineUpdate.osName = latestSnapshot.os_name;
+    }
+    if (latestSnapshot.os_version) {
+      machineUpdate.osVersion = latestSnapshot.os_version;
+    }
+
+    // Update machine's last_seen timestamp and OS info
+    await db.update(machines).set(machineUpdate).where(eq(machines.id, machine.id));
 
     return successResponse({ inserted: insertedMetrics.length }, 201);
   } catch (error) {

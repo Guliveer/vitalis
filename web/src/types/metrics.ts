@@ -42,6 +42,8 @@ export interface MetricBatch {
     cpu_temp?: number | null;
     gpu_temp?: number | null;
     processes: ProcessEntry[];
+    os_version?: string;
+    os_name?: string;
   }>;
 }
 

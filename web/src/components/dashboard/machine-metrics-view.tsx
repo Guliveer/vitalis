@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { usePolling } from "@/hooks/use-polling";
+import { authFetch } from "@/lib/auth/fetch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,13 +48,21 @@ const TIME_RANGES = [
 export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
   const [selectedRange, setSelectedRange] = useState(1);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Track whether data has been loaded at least once
+  const hasDataRef = useRef(false);
+  // Track the last successfully fetched range to detect range changes
+  const lastFetchedRangeRef = useRef<number | null>(null);
 
   const fetchMetrics = useCallback(
     async (hours: number) => {
-      setLoading(true);
-      setError("");
+      // Show loading skeleton only on initial load or when time range changes
+      const isRangeChange = lastFetchedRangeRef.current !== null && lastFetchedRangeRef.current !== hours;
+      if (!hasDataRef.current || isRangeChange) {
+        setInitialLoading(true);
+      }
 
       const to = new Date();
       const from = new Date(to.getTime() - hours * 60 * 60 * 1000);
@@ -69,19 +78,28 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
           include_processes: includeProcesses,
         });
 
-        const res = await fetch(`/api/machines/${machineId}/metrics?${params}`);
+        const res = await authFetch(`/api/machines/${machineId}/metrics?${params}`);
         const data = await res.json();
 
         if (!res.ok) {
-          setError(data.error || "Failed to fetch metrics");
+          // Only set error if we have no data yet; otherwise keep showing stale data
+          if (!hasDataRef.current) {
+            setError(data.error || "Failed to fetch metrics");
+          }
           return;
         }
 
         setMetrics(data.data?.metrics ?? []);
+        setError("");
+        hasDataRef.current = true;
+        lastFetchedRangeRef.current = hours;
       } catch {
-        setError("Network error. Please try again.");
+        // Only set error if we have no data yet
+        if (!hasDataRef.current) {
+          setError("Network error. Please try again.");
+        }
       } finally {
-        setLoading(false);
+        setInitialLoading(false);
       }
     },
     [machineId],
@@ -120,7 +138,7 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
         </Alert>
       )}
 
-      {loading ? (
+      {initialLoading ? (
         <div className="space-y-6">
           {/* Skeleton for current state */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

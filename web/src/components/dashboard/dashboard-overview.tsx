@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { usePolling } from "@/hooks/use-polling";
+import { authFetch } from "@/lib/auth/fetch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,20 +94,27 @@ function SummaryCard({ icon, label, value, subtitle }: SummaryCardProps) {
 export function DashboardOverview() {
   const router = useRouter();
   const [machines, setMachines] = useState<MachineWithStatus[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Track whether data has been loaded at least once
+  const hasDataRef = useRef(false);
 
   const fetchMachines = useCallback(async () => {
     try {
-      const res = await fetch("/api/machines");
+      const res = await authFetch("/api/machines");
       if (!res.ok) throw new Error("Failed to fetch machines");
       const data = await res.json();
       setMachines(data.data?.machines ?? []);
       setError("");
+      hasDataRef.current = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch machines");
+      // Only set error if we have no data yet; otherwise keep showing stale data
+      if (!hasDataRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to fetch machines");
+      }
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -142,7 +150,7 @@ export function DashboardOverview() {
 
   // ---- Loading state ------------------------------------------------------
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div>
         <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
@@ -158,7 +166,7 @@ export function DashboardOverview() {
 
   // ---- Error state --------------------------------------------------------
 
-  if (error) {
+  if (error && !hasDataRef.current) {
     return (
       <div>
         <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
@@ -247,9 +255,10 @@ export function DashboardOverview() {
                   }}>
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{machine.name}</p>
-                    {machine.os && (
+                    {(machine.osName || machine.os) && (
                       <p className="text-xs text-muted-foreground truncate">
-                        {machine.os}
+                        {machine.osName || machine.os}
+                        {machine.osVersion ? ` ${machine.osVersion}` : ""}
                         {machine.arch ? ` · ${machine.arch}` : ""}
                       </p>
                     )}

@@ -28,6 +28,8 @@ export const machines = pgTable("machines", {
   machineToken: varchar("machine_token", { length: 255 }).notNull().unique(),
   os: varchar("os", { length: 50 }),
   arch: varchar("arch", { length: 50 }),
+  osVersion: varchar("os_version", { length: 100 }),
+  osName: varchar("os_name", { length: 100 }),
   lastSeen: timestamp("last_seen", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

@@ -5,10 +5,53 @@ package collector
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/vitalis-app/agent/internal/models"
 )
+
+// normalizedStatuses maps raw gopsutil status strings to a consistent set of
+// display values used across all platforms.
+var normalizedStatuses = map[string]string{
+	"running":              "running",
+	"sleeping":             "sleeping",
+	"idle":                 "idle",
+	"stopped":              "stopped",
+	"zombie":               "zombie",
+	"wait":                 "sleeping",
+	"lock":                 "sleeping",
+	"sleep":                "sleeping",
+	"disk-sleep":           "sleeping",
+	"tracing-stop":         "stopped",
+	"dead":                 "zombie",
+	"wake-kill":            "sleeping",
+	"waking":               "running",
+	"parked":               "idle",
+	"idle-interrupt":       "idle",
+	"suspended":            "stopped",
+	"uninterruptible-sleep": "sleeping",
+}
+
+// normalizeStatus maps a raw gopsutil status string to a consistent display
+// value. If the status is empty or unrecognised, it infers a value from the
+// process's CPU usage: CPU > 0 → "running", otherwise "idle".
+func normalizeStatus(raw string, cpuPct float64) string {
+	if raw != "" {
+		key := strings.ToLower(strings.TrimSpace(raw))
+		if mapped, ok := normalizedStatuses[key]; ok {
+			return mapped
+		}
+		// Unknown but non-empty — return as-is lowercased.
+		return key
+	}
+
+	// Empty status (common on Windows) — infer from CPU activity.
+	if cpuPct > 0 {
+		return "running"
+	}
+	return "idle"
+}
 
 // ProcessCollector collects the top N processes by CPU usage.
 type ProcessCollector struct {
@@ -40,9 +83,9 @@ func (c *ProcessCollector) Collect(ctx context.Context) (interface{}, error) {
 		memPct, _ := p.MemoryPercentWithContext(ctx)
 		status, _ := p.StatusWithContext(ctx)
 
-		statusStr := ""
+		rawStatus := ""
 		if len(status) > 0 {
-			statusStr = status[0]
+			rawStatus = status[0]
 		}
 
 		infos = append(infos, models.ProcessInfo{
@@ -50,7 +93,7 @@ func (c *ProcessCollector) Collect(ctx context.Context) (interface{}, error) {
 			Name:   name,
 			CPU:    cpuPct,
 			Memory: float64(memPct),
-			Status: statusStr,
+			Status: normalizeStatus(rawStatus, cpuPct),
 		})
 	}
 
