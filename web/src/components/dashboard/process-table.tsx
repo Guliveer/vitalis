@@ -248,7 +248,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
         </div>
 
         <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -312,7 +312,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
               <Button variant="outline" size="sm" disabled={safePage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>
                 ← Prev
               </Button>
-              <span className="min-w-[4rem] text-center tabular-nums">
+              <span className="min-w-16 text-center tabular-nums">
                 {safePage} / {totalPages}
               </span>
               <Button variant="outline" size="sm" disabled={safePage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}>
