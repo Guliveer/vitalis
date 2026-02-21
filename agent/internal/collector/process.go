@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/v3/process"
-	"github.com/vitalis-app/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/models"
 )
 
 // normalizedStatuses maps raw gopsutil status strings to a consistent set of

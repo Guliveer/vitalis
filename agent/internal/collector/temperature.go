@@ -11,7 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"go.uber.org/zap"
 
-	"github.com/vitalis-app/agent/internal/platform"
+	"github.com/Guliveer/vitalis/agent/internal/platform"
 )
 
 // Sensor name substrings used to identify CPU temperature sensors across platforms.

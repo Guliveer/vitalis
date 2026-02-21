@@ -1,4 +1,4 @@
-module github.com/vitalis-app/agent
+module github.com/Guliveer/vitalis/agent
 
 go 1.21
 

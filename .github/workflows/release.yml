@@ -1,0 +1,130 @@
+# =============================================================================
+# Vitalis Release Workflow
+# =============================================================================
+# Builds all platform binaries, creates a GitHub Release with assets and
+# checksums, and commits updated binaries to web/public/downloads/ for the
+# download API.
+#
+# Triggers:
+#   - Push of a v{N} tag (e.g. v1, v2, v42)
+#
+# Related:
+#   - build-agent.yml  — CI builds on push to main / manual dispatch
+#   - auto-version.yml — Auto-creates tags on push to main when agent/ changes
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+" # matches v1, v2, v42, etc.
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build all platform binaries
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.23
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: agent/go.sum
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Prepare embed config
+        run: cp agent/cmd/agent/embed_config.yaml.example agent/cmd/agent/embed_config.yaml
+
+      - name: Build all platforms
+        run: |
+          chmod +x build-downloads.sh
+          ./build-downloads.sh --version "${{ steps.version.outputs.version }}"
+
+      - name: Generate checksums
+        working-directory: web/public/downloads
+        run: |
+          sha256sum vitalis-agent-* > checksums.txt
+          cat checksums.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: |
+            web/public/downloads/vitalis-agent-*
+            web/public/downloads/checksums.txt
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Create GitHub Release with assets
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: ./artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ./artifacts/vitalis-agent-*
+            ./artifacts/checksums.txt
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Commit binaries to web/public/downloads/
+  # ---------------------------------------------------------------------------
+  update-downloads:
+    name: Update Download Binaries
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: ./artifacts
+
+      - name: Update download binaries
+        run: |
+          cp ./artifacts/vitalis-agent-* web/public/downloads/
+          rm -f web/public/downloads/checksums.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/public/downloads/
+          git diff --cached --quiet || git commit -m "chore: update agent binaries to ${{ github.ref_name }} [skip ci]"
+          git push

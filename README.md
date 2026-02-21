@@ -25,12 +25,14 @@ Vitalis is a production-grade monitoring platform designed for individuals and s
 - **Layered Configuration** — CLI flags, environment variables, YAML file, or embedded config (in that priority order)
 - **One-Command Setup** — `./vitalis-agent --setup` installs, configures, and registers as a service
 - **Auto-Install as Service** — Binary auto-registers as a system service on first run (Windows Service, systemd, launchd)
+- **Auto-Update** — Optional automatic updates via GitHub Releases with SHA-256 checksum verification
 - **Real-Time Dashboard** — CPU, RAM, disk, network charts with live process tables
 - **Offline Resilience** — Local SQLite buffer survives reboots and network outages
 - **Multi-Resolution Data** — Raw (7 days), hourly (30 days), and daily (1 year) retention
 - **Secure by Design** — JWT auth, bcrypt passwords, machine token authentication, HTTPS enforcement
 - **Zero-Config Deployment** — Vercel + Neon free tiers for effortless hosting
 - **Cross-Platform Agent Builds** — Compile for Windows, Linux, and macOS from a single codebase
+- **Automated Releases** — Push a semver tag to build, checksum, and publish binaries via GitHub Actions
 
 ---
 
@@ -59,8 +61,6 @@ graph LR
     Web -- "200 / 401 / 429" --> Agent
     Web --> DB
 ```
-
-For the full architecture document including database schema, security threat model, and scaling strategy, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -158,11 +158,13 @@ sudo ./vitalis-agent --setup --mode system --url https://your-app.vercel.app --t
 ```
 
 The wizard will:
+
 - Copy the binary to the appropriate system directory
 - Create a configuration file
 - Register and start a system service
 
 For per-user installation (no root required):
+
 ```bash
 ./vitalis-agent --setup --mode user
 ```
@@ -247,43 +249,58 @@ Produces binaries for all supported platforms:
 
 The agent supports layered configuration with the following precedence (highest first):
 
-| Source | Example |
-|--------|---------|
-| CLI flags | `--url https://... --token mtoken_...` |
-| Environment variables | `SA_SERVER_URL`, `SA_MACHINE_TOKEN`, `SA_LOG_LEVEL` |
-| External YAML file | `/etc/vitalis/agent.yaml` or `~/.vitalis/config.yaml` |
-| Embedded config | Baked in at build time via `build.sh` |
-| Defaults | `http://localhost:3000`, 15s interval |
+| Source                | Example                                               |
+| --------------------- | ----------------------------------------------------- |
+| CLI flags             | `--url https://... --token mtoken_...`                |
+| Environment variables | `SA_SERVER_URL`, `SA_MACHINE_TOKEN`, `SA_LOG_LEVEL`   |
+| External YAML file    | `/etc/vitalis/agent.yaml` or `~/.vitalis/config.yaml` |
+| Embedded config       | Baked in at build time via `build.sh`                 |
+| Defaults              | `http://localhost:3000`, 15s interval                 |
 
 ### Configuration File Reference
 
 ```yaml
 server:
-  url: "https://your-app.vercel.app"    # API server URL
-  machine_token: "mtoken_your-token"     # Machine authentication token
+  url: "https://your-app.vercel.app" # API server URL
+  machine_token: "mtoken_your-token" # Machine authentication token
 
 collection:
-  interval: "15s"          # How often to collect metrics
-  batch_interval: "30s"    # How often to send batches to the API
-  top_processes: 10        # Number of top processes to track
+  interval: "15s" # How often to collect metrics
+  batch_interval: "30s" # How often to send batches to the API
+  top_processes: 10 # Number of top processes to track
 
 buffer:
-  max_size_mb: 50          # Max local buffer size for offline storage
-  db_path: "/var/lib/vitalis"  # Directory for buffer files
+  max_size_mb: 50 # Max local buffer size for offline storage
+  db_path: "/var/lib/vitalis" # Directory for buffer files
 
 logging:
-  level: "info"            # Log level: debug, info, warn, error
-  file: ""                 # Log file path (empty = stdout only)
+  level: "info" # Log level: debug, info, warn, error
+  file: "" # Log file path (empty = stdout only)
 ```
+
+### Auto-Update Configuration
+
+The agent supports automatic updates from GitHub Releases. Auto-update is **disabled by default** and must be explicitly enabled:
+
+```yaml
+update:
+  enabled: false # Set to true to enable auto-updates
+  check_interval: "1h" # How often to check for new versions
+  channel: "stable" # "stable" (releases only) or "beta" (includes pre-releases)
+```
+
+When enabled, the agent periodically checks GitHub Releases for a newer version, downloads the platform-appropriate binary, verifies its SHA-256 checksum against the published `checksums.txt`, replaces the current binary, and restarts the service. If any step fails, the agent automatically rolls back to the previous binary.
+
+> **Note:** Dev builds (`version=dev`) skip auto-update entirely. The agent must be running as a system service for the automatic restart to work.
 
 ### Install Locations
 
-| Mode | Binary | Config | Data |
-|------|--------|--------|------|
-| System (Linux/macOS) | `/opt/vitalis/vitalis-agent` | `/etc/vitalis/agent.yaml` | `/var/lib/vitalis/` |
-| System (Windows) | `C:\Program Files\Vitalis\` | `%ProgramData%\Vitalis\` | `%ProgramData%\Vitalis\` |
-| User (Linux/macOS) | `~/.vitalis/bin/vitalis-agent` | `~/.vitalis/config.yaml` | `~/.vitalis/data/` |
-| User (Windows) | `%LOCALAPPDATA%\Vitalis\` | `%LOCALAPPDATA%\Vitalis\` | `%LOCALAPPDATA%\Vitalis\` |
+| Mode                 | Binary                         | Config                    | Data                      |
+| -------------------- | ------------------------------ | ------------------------- | ------------------------- |
+| System (Linux/macOS) | `/opt/vitalis/vitalis-agent`   | `/etc/vitalis/agent.yaml` | `/var/lib/vitalis/`       |
+| System (Windows)     | `C:\Program Files\Vitalis\`    | `%ProgramData%\Vitalis\`  | `%ProgramData%\Vitalis\`  |
+| User (Linux/macOS)   | `~/.vitalis/bin/vitalis-agent` | `~/.vitalis/config.yaml`  | `~/.vitalis/data/`        |
+| User (Windows)       | `%LOCALAPPDATA%\Vitalis\`      | `%LOCALAPPDATA%\Vitalis\` | `%LOCALAPPDATA%\Vitalis\` |
 
 ---
 
@@ -307,6 +324,7 @@ vitalis/
 │   │   ├── buffer/                 # SQLite-backed offline buffer
 │   │   ├── sender/                 # HTTP batch sender with retry logic
 │   │   ├── config/                 # YAML + env var configuration
+│   │   ├── updater/                # Auto-update via GitHub Releases
 │   │   ├── service/                # Windows service integration
 │   │   ├── platform/               # OS abstraction layer
 │   │   └── models/                 # Shared data types
@@ -327,27 +345,45 @@ vitalis/
 │   │   └── types/                  # TypeScript type definitions
 │   ├── vercel.json                 # Cron job configuration
 │   └── package.json
+├── .github/workflows/
+│   ├── build-agent.yml             # CI build on push to main
+│   └── release.yml                 # Automated release on semver tag push
 ├── build.sh                        # Build script (macOS/Linux)
 ├── build.ps1                       # Build script (Windows PowerShell)
-├── docs/                           # Project documentation
-│   ├── ARCHITECTURE.md             # Full architecture document
-│   ├── DEPLOYMENT.md               # Deployment guide
-│   ├── API.md                      # API reference
-│   └── AGENT.md                    # Agent documentation
 ├── .env.example                    # Environment variable template
 └── README.md                       # This file
 ```
 
 ---
 
-## Documentation
+## Releases
 
-| Document                                       | Description                                       |
-| ---------------------------------------------- | ------------------------------------------------- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System design, database schema, scaling strategy  |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)     | Step-by-step production deployment guide          |
-| [`docs/API.md`](docs/API.md)                   | Complete API reference for all endpoints          |
-| [`docs/AGENT.md`](docs/AGENT.md)               | Agent configuration, collectors, and installation |
+Vitalis uses an automated release workflow powered by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+
+### Creating a Release
+
+Push a semver-formatted tag to trigger the release pipeline:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+For pre-releases (beta channel), include a pre-release suffix:
+
+```bash
+git tag v1.1.0-beta.1
+git push origin v1.1.0-beta.1
+```
+
+### What the Workflow Does
+
+1. **Build** — Cross-compiles agent binaries for all platforms (linux/amd64, darwin/amd64, darwin/arm64, windows/amd64)
+2. **Checksum** — Generates `checksums.txt` with SHA-256 hashes for all binaries
+3. **Release** — Creates a GitHub Release with all binaries and checksums attached, with auto-generated release notes
+4. **Update Downloads** — Commits the new binaries to `web/public/downloads/` for the download API (stable releases only)
+
+Pre-releases (tags containing `-`) are automatically marked as pre-release on GitHub and are **not** committed to the downloads directory.
 
 ---
 

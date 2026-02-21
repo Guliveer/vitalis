@@ -14,3 +14,10 @@ buffer:
 logging:
   level: "info"
   file: "./agent.log"
+
+# Auto-update configuration
+update:
+  # Enable automatic updates from GitHub Releases (default: false)
+  enabled: false
+  # How often to check for new releases
+  check_interval: "1h"

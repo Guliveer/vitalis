@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/vitalis-app/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/models"
 )
 
 // Buffer provides local file-based storage for metrics when the API is unavailable.

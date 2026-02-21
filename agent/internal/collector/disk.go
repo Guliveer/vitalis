@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/vitalis-app/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/models"
 	"go.uber.org/zap"
 )
 

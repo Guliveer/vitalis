@@ -105,9 +105,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Auto-detect version from git if not provided
+# Auto-detect version from git tags if not provided
 if [[ -z "${VERSION}" ]]; then
-  VERSION="$(git describe --tags --always 2>/dev/null || echo "dev")"
+  VERSION="$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+$' | sed 's/v//' | sort -n | tail -1)"
+  if [[ -z "${VERSION}" ]]; then
+    VERSION="dev"
+  else
+    VERSION="v${VERSION}"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vitalis-app/agent/internal/autostart"
-	"github.com/vitalis-app/agent/internal/config"
+	"github.com/Guliveer/vitalis/agent/internal/autostart"
+	"github.com/Guliveer/vitalis/agent/internal/config"
 )
 
 // Options holds the CLI flags passed to --setup.

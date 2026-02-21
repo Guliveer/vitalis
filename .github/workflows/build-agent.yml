@@ -1,13 +1,15 @@
 # =============================================================================
-# Vitalis Build Agent Download Binaries
+# Vitalis Build Agent Download Binaries (CI)
 # =============================================================================
 # Cross-compiles the agent with the generic config and commits the binaries
 # to web/public/downloads/ so the download API can serve them.
 #
+# NOTE: Release builds (tag pushes) are handled by release.yml, which also
+#       creates GitHub Releases with checksums and uploads release assets.
+#
 # Triggers:
 #   - Push to main when agent/ files change
 #   - Manual dispatch with optional version override
-#   - Release published (also uploads binaries as release assets)
 
 name: "Build Agent Download Binaries"
 
@@ -24,8 +26,6 @@ on:
         description: "Version string to embed in the binaries"
         required: false
         default: ""
-  release:
-    types: [published]
 
 concurrency:
   group: build-agent-${{ github.ref }}
@@ -56,8 +56,6 @@ jobs:
           chmod +x build-downloads.sh
           if [ -n "${{ github.event.inputs.version }}" ]; then
             ./build-downloads.sh --version "${{ github.event.inputs.version }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            ./build-downloads.sh --version "${{ github.event.release.tag_name }}"
           else
             ./build-downloads.sh
           fi
@@ -70,7 +68,6 @@ jobs:
           retention-days: 30
 
       - name: Commit binaries to repository
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -81,9 +78,3 @@ jobs:
           else
             echo "No changes to commit — binaries are up to date"
           fi
-
-      - name: Upload release assets
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: web/public/downloads/vitalis-agent-*

@@ -15,3 +15,7 @@ buffer:
 
 logging:
   level: "info"
+
+update:
+  enabled: false
+  check_interval: "12h"

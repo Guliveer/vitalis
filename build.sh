@@ -159,7 +159,7 @@ create_convenience_link() {
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
-VERSION="dev"
+VERSION=""
 PLATFORM=""
 CONFIG=""
 BUILD_ALL=false
@@ -227,6 +227,16 @@ if [[ "${CLEAN}" == true ]]; then
     success "Removed staged embed_config.yaml"
   fi
   exit 0
+fi
+
+# Auto-detect version from git tags if not provided
+if [[ -z "${VERSION}" ]]; then
+  VERSION="$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+$' | sed 's/v//' | sort -n | tail -1)"
+  if [[ -z "${VERSION}" ]]; then
+    VERSION="dev"
+  else
+    VERSION="v${VERSION}"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

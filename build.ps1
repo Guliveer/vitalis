@@ -17,7 +17,7 @@
 param(
     [string]$Config = "",
     [string]$Platform = "",
-    [string]$Version = "dev",
+    [string]$Version = "",
     [switch]$All,
     [switch]$Clean,
     [switch]$Help
@@ -217,6 +217,16 @@ if (-not $goCmd) {
 if (-not (Test-Path (Join-Path $AgentDir "go.mod"))) {
     Write-Err "Agent source not found at $AgentDir\go.mod"
     exit 1
+}
+
+# Auto-detect version from git tags if not provided
+if ($Version -eq "") {
+    $LATEST = git tag -l 'v[0-9]*' | Where-Object { $_ -match '^v\d+$' } | ForEach-Object { [int]($_ -replace 'v','') } | Sort-Object | Select-Object -Last 1
+    if ($LATEST) {
+        $Version = "v$LATEST"
+    } else {
+        $Version = "dev"
+    }
 }
 
 $goVersion = & go version

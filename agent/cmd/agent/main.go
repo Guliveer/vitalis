@@ -14,16 +14,17 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/vitalis-app/agent/internal/autostart"
-	"github.com/vitalis-app/agent/internal/buffer"
-	"github.com/vitalis-app/agent/internal/collector"
-	"github.com/vitalis-app/agent/internal/config"
-	"github.com/vitalis-app/agent/internal/models"
-	"github.com/vitalis-app/agent/internal/platform"
-	"github.com/vitalis-app/agent/internal/scheduler"
-	"github.com/vitalis-app/agent/internal/sender"
-	"github.com/vitalis-app/agent/internal/service"
-	"github.com/vitalis-app/agent/internal/setup"
+	"github.com/Guliveer/vitalis/agent/internal/autostart"
+	"github.com/Guliveer/vitalis/agent/internal/buffer"
+	"github.com/Guliveer/vitalis/agent/internal/collector"
+	"github.com/Guliveer/vitalis/agent/internal/config"
+	"github.com/Guliveer/vitalis/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/platform"
+	"github.com/Guliveer/vitalis/agent/internal/scheduler"
+	"github.com/Guliveer/vitalis/agent/internal/sender"
+	"github.com/Guliveer/vitalis/agent/internal/service"
+	"github.com/Guliveer/vitalis/agent/internal/setup"
+	"github.com/Guliveer/vitalis/agent/internal/updater"
 )
 
 var (
@@ -203,6 +204,15 @@ func runAgent(ctx context.Context, cfg *config.Config, logger *zap.Logger) {
 	sched.OnBatchReady(func(batch []models.MetricSnapshot) {
 		snd.Send(batch)
 	})
+
+	// Initialize and start the auto-updater
+	updateCfg := updater.Config{
+		Enabled:       cfg.Update.Enabled,
+		CheckInterval: cfg.Update.CheckInterval.Duration,
+	}
+	upd := updater.New(version, updateCfg, logger)
+	upd.Start(ctx)
+	defer upd.Stop()
 
 	// Start the scheduler (blocks until context is cancelled)
 	logger.Info("Agent running",

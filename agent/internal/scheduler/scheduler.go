@@ -11,9 +11,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/vitalis-app/agent/internal/collector"
-	"github.com/vitalis-app/agent/internal/config"
-	"github.com/vitalis-app/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/collector"
+	"github.com/Guliveer/vitalis/agent/internal/config"
+	"github.com/Guliveer/vitalis/agent/internal/models"
 )
 
 // Scheduler manages periodic metric collection and batching.

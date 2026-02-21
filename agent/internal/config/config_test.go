@@ -11,7 +11,7 @@ func TestLoadLayered_CLIOverridesEverything(t *testing.T) {
 	t.Setenv("SA_SERVER_URL", "https://env.example.com")
 	cli := CLIOverrides{URL: "https://cli.example.com", Token: "cli_token"}
 
-	cfg, err := LoadLayered(cli, embedded)
+	cfg, err := LoadLayered(cli, embedded, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestLoadLayered_EnvOverridesEmbed(t *testing.T) {
 	embedded := []byte("server:\n  url: \"https://embedded.example.com\"\n  machine_token: \"embedded_token\"")
 	t.Setenv("SA_SERVER_URL", "https://env.example.com")
 
-	cfg, err := LoadLayered(CLIOverrides{}, embedded)
+	cfg, err := LoadLayered(CLIOverrides{}, embedded, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestLoadLayered_EnvOverridesEmbed(t *testing.T) {
 }
 
 func TestLoadLayered_DefaultsWhenEmpty(t *testing.T) {
-	cfg, err := LoadLayered(CLIOverrides{}, nil)
+	cfg, err := LoadLayered(CLIOverrides{}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

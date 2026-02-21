@@ -16,9 +16,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/vitalis-app/agent/internal/buffer"
-	"github.com/vitalis-app/agent/internal/config"
-	"github.com/vitalis-app/agent/internal/models"
+	"github.com/Guliveer/vitalis/agent/internal/buffer"
+	"github.com/Guliveer/vitalis/agent/internal/config"
+	"github.com/Guliveer/vitalis/agent/internal/models"
 )
 
 const (

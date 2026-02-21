@@ -45,6 +45,7 @@ type Config struct {
 	Collection CollectionConfig `yaml:"collection"`
 	Buffer     BufferConfig     `yaml:"buffer"`
 	Logging    LoggingConfig    `yaml:"logging"`
+	Update     UpdateConfig     `yaml:"update"`
 }
 
 // ServerConfig holds API server connection settings.
@@ -72,6 +73,12 @@ type LoggingConfig struct {
 	File  string `yaml:"file"`
 }
 
+// UpdateConfig holds auto-update settings.
+type UpdateConfig struct {
+	Enabled       bool     `yaml:"enabled"`
+	CheckInterval Duration `yaml:"check_interval"`
+}
+
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	return &Config{
@@ -91,6 +98,10 @@ func DefaultConfig() *Config {
 		Logging: LoggingConfig{
 			Level: "info",
 			File:  "./agent.log",
+		},
+		Update: UpdateConfig{
+			Enabled:       false,
+			CheckInterval: Duration{1 * time.Hour},
 		},
 	}
 }
@@ -153,7 +164,11 @@ func Locate() string {
 
 // LoadLayered loads configuration with the full precedence chain:
 // CLI flags > env vars > external YAML file > embedded bytes > defaults.
-func LoadLayered(cli CLIOverrides, embedded []byte) (*Config, error) {
+//
+// An optional configPath argument controls external-file discovery:
+//   - omitted        → auto-discover via Locate()
+//   - explicit value  → use that path ("" means no external file)
+func LoadLayered(cli CLIOverrides, embedded []byte, configPath ...string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	// Layer 1: embedded config (lowest priority data layer)
@@ -164,11 +179,17 @@ func LoadLayered(cli CLIOverrides, embedded []byte) (*Config, error) {
 	}
 
 	// Layer 2: external YAML file
-	if path := Locate(); path != "" {
-		data, err := os.ReadFile(path)
+	var filePath string
+	if len(configPath) > 0 {
+		filePath = configPath[0] // caller-supplied (may be "")
+	} else {
+		filePath = Locate() // auto-discover
+	}
+	if filePath != "" {
+		data, err := os.ReadFile(filePath)
 		if err == nil {
 			if err := yaml.Unmarshal(data, cfg); err != nil {
-				return nil, fmt.Errorf("parsing config file %s: %w", path, err)
+				return nil, fmt.Errorf("parsing config file %s: %w", filePath, err)
 			}
 		}
 	}
