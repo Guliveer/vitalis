@@ -36,39 +36,24 @@ SUPPORTED_PLATFORMS=(
 )
 
 # ---------------------------------------------------------------------------
-# Colors (disabled when stdout is not a terminal)
-# ---------------------------------------------------------------------------
-if [[ -t 1 ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[0;33m'
-  BLUE='\033[0;34m'
-  CYAN='\033[0;36m'
-  BOLD='\033[1m'
-  RESET='\033[0m'
-else
-  RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' RESET=''
-fi
-
-# ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-info()    { echo -e "${BLUE}[INFO]${RESET}  $*"; }
-success() { echo -e "${GREEN}[OK]${RESET}    $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
-error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
+info()    { echo "[INFO]  $*"; }
+success() { echo "[OK]    $*"; }
+warn()    { echo "[WARN]  $*"; }
+error()   { echo "[ERROR] $*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Usage / Help
 # ---------------------------------------------------------------------------
 show_help() {
   cat <<EOF
-${BOLD}Vitalis Agent Build Script${RESET}
+Vitalis Agent Build Script
 
-${CYAN}Usage:${RESET}
+Usage:
   ./build.sh [options]
 
-${CYAN}Options:${RESET}
+Options:
   --config <name>        Config to embed (name without .yaml extension from agent/configs/)
                          If omitted, an interactive picker is shown
   --platform <os/arch>   Build for a specific platform (e.g., linux/amd64)
@@ -77,13 +62,13 @@ ${CYAN}Options:${RESET}
   --clean                Remove the build/ directory and staged embed_config.yaml, then exit
   --help                 Show this help message
 
-${CYAN}Supported platforms:${RESET}
+Supported platforms:
   windows/amd64          Windows 64-bit (Intel/AMD)
   linux/amd64            Linux 64-bit (Intel/AMD)
   darwin/arm64           macOS Apple Silicon (M1/M2/M3/M4)
   darwin/amd64           macOS Intel
 
-${CYAN}Examples:${RESET}
+Examples:
   ./build.sh                              # Build for current OS/arch (interactive config)
   ./build.sh --config agent_z370m         # Build with specific config embedded
   ./build.sh --all --version 1.0.0        # Build all platforms with version
@@ -116,7 +101,7 @@ build_platform() {
   output="$(binary_name "${os}" "${arch}")"
   local output_path="${BUILD_DIR}/${output}"
 
-  info "Building ${BOLD}${os}/${arch}${RESET} → ${output}"
+  info "Building ${os}/${arch} → ${output}"
 
   # Run go build from the agent directory, outputting to ../build/
   if (cd "${AGENT_DIR}" && \
@@ -254,7 +239,7 @@ if [[ ! -f "${AGENT_DIR}/go.mod" ]]; then
 fi
 
 info "Go version: $(go version)"
-info "Version tag: ${BOLD}${VERSION}${RESET}"
+info "Version tag: ${VERSION}"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -299,7 +284,7 @@ select_config() {
     SELECTED_CONFIG_PATH="${config_path}"
   else
     # Interactive selection
-    echo -e "${CYAN}Available configurations:${RESET}"
+    echo "Available configurations:"
     local i=1
     for name in "${config_names[@]}"; do
       echo "  ${i}) ${name}"
@@ -329,7 +314,7 @@ select_config() {
 
 select_config
 
-info "Using config: ${BOLD}${SELECTED_CONFIG_NAME}${RESET} (${SELECTED_CONFIG_PATH})"
+info "Using config: ${SELECTED_CONFIG_NAME} (${SELECTED_CONFIG_PATH})"
 
 # Stage the config for go:embed
 cp "${SELECTED_CONFIG_PATH}" "${EMBED_CONFIG}"
@@ -349,7 +334,7 @@ FAILED=()
 
 if [[ "${BUILD_ALL}" == true ]]; then
   # Build all supported platforms
-  info "Building for ${BOLD}all supported platforms${RESET}..."
+  info "Building for all supported platforms..."
   echo ""
   for platform in "${SUPPORTED_PLATFORMS[@]}"; do
     os="${platform%/*}"
@@ -397,7 +382,7 @@ else
   CURRENT_ARCH="$(go env GOARCH)"
   CURRENT_PLATFORM="${CURRENT_OS}/${CURRENT_ARCH}"
 
-  info "Building for current platform: ${BOLD}${CURRENT_PLATFORM}${RESET}"
+  info "Building for current platform: ${CURRENT_PLATFORM}"
   echo ""
 
   if build_platform "${CURRENT_OS}" "${CURRENT_ARCH}" "${VERSION}"; then
@@ -412,32 +397,32 @@ fi
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD} Build Summary${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "Embedded config: ${CYAN}${SELECTED_CONFIG_NAME}${RESET} (${SELECTED_CONFIG_PATH})"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo " Build Summary"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Embedded config: ${SELECTED_CONFIG_NAME} (${SELECTED_CONFIG_PATH})"
 
 if [[ ${#BUILT[@]} -gt 0 ]]; then
-  echo -e "${GREEN}✓ Succeeded (${#BUILT[@]}):${RESET}"
+  echo "Succeeded (${#BUILT[@]}):"
   for p in "${BUILT[@]}"; do
     os="${p%/*}"
     arch="${p#*/}"
     name="$(binary_name "${os}" "${arch}")"
     size="$(du -h "${BUILD_DIR}/${name}" | cut -f1 | xargs)"
-    echo -e "  ${GREEN}•${RESET} ${p} → ${name} (${size})"
+    echo "  - ${p} → ${name} (${size})"
   done
 fi
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
-  echo -e "${RED}✗ Failed (${#FAILED[@]}):${RESET}"
+  echo "Failed (${#FAILED[@]}):"
   for p in "${FAILED[@]}"; do
-    echo -e "  ${RED}•${RESET} ${p}"
+    echo "  - ${p}"
   done
 fi
 
 echo ""
-echo -e "Output directory: ${CYAN}${BUILD_DIR}/${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo "Output directory: ${BUILD_DIR}/"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Exit with error if any builds failed
 if [[ ${#FAILED[@]} -gt 0 ]]; then

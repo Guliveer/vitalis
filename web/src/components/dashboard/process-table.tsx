@@ -89,7 +89,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[80px] text-right">Instances</TableHead>
+          <TableHead className="w-20 text-right">Instances</TableHead>
           <TableHead>Name</TableHead>
           <TableHead className="text-right">CPU %</TableHead>
           <TableHead className="text-right">Memory %</TableHead>
@@ -108,7 +108,7 @@ export function ProcessTable({ processes }: ProcessTableProps) {
                 <span className="text-muted-foreground">1</span>
               )}
             </TableCell>
-            <TableCell className="truncate max-w-[200px]">{group.name}</TableCell>
+            <TableCell className="truncate max-w-50">{group.name}</TableCell>
             <TableCell className="text-right font-mono">
               <span className={cn(group.cpu >= 80 ? "text-red-400" : group.cpu >= 50 ? "text-amber-400" : "")}>{formatPercentage(group.cpu)}</span>
             </TableCell>

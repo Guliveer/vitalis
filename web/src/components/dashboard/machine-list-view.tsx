@@ -51,7 +51,7 @@ export function MachineListView({ title }: { title: string }) {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-[180px] rounded-xl" />
+            <Skeleton key={i} className="h-45 rounded-xl" />
           ))}
         </div>
       </div>

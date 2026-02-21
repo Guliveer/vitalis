@@ -78,6 +78,8 @@ export const GET = withAuth(async (request: NextRequest, { user }: AuthContext):
           userId: machine.userId,
           name: machine.name,
           os: machine.os,
+          osVersion: machine.osVersion,
+          osName: machine.osName,
           arch: machine.arch,
           lastSeen: machine.lastSeen,
           createdAt: machine.createdAt,
