@@ -185,7 +185,7 @@ func runAgent(ctx context.Context, cfg *config.Config, logger *zap.Logger) {
 	registry := collector.NewRegistry(logger)
 	registry.Register(collector.NewCPUCollector())
 	registry.Register(collector.NewMemoryCollector())
-	registry.Register(collector.NewDiskCollector())
+	registry.Register(collector.NewDiskCollector(logger))
 	registry.Register(collector.NewNetworkCollector())
 	registry.Register(collector.NewProcessCollector(cfg.Collection.TopProcesses))
 	registry.Register(collector.NewUptimeCollector())

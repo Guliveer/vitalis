@@ -27,3 +27,11 @@ export type CreateMachineInput = z.infer<typeof createMachineSchema>;
 export type UpdateMachineInput = z.infer<typeof updateMachineSchema>;
 export type ShareMachineInput = z.infer<typeof shareMachineSchema>;
 export type MetricQueryInput = z.infer<typeof metricQuerySchema>;
+
+export const downloadQuerySchema = z.object({
+  os: z.enum(["windows", "linux", "darwin"]),
+  arch: z.enum(["amd64", "arm64"]),
+  type: z.enum(["zip", "config"]).default("config"),
+});
+
+export type DownloadQueryInput = z.infer<typeof downloadQuerySchema>;

@@ -98,7 +98,10 @@ export function CurrentStatePanel({ data }: CurrentStatePanelProps) {
                 return (
                   <div key={disk.mount}>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-mono">{disk.mount}</span>
+                      <span className="font-mono">
+                        {disk.mount}
+                        {disk.fs && <span className="ml-1 text-[10px] text-muted-foreground font-sans">{disk.fs}</span>}
+                      </span>
                       <span>
                         {formatBytes(disk.used)} / {formatBytes(disk.total)}
                       </span>

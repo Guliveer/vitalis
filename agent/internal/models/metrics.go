@@ -23,6 +23,7 @@ type MetricSnapshot struct {
 // DiskInfo represents usage for a single disk/partition.
 type DiskInfo struct {
 	Mount string `json:"mount"`
+	Fs    string `json:"fs,omitempty"`
 	Total uint64 `json:"total"`
 	Used  uint64 `json:"used"`
 	Free  uint64 `json:"free"`

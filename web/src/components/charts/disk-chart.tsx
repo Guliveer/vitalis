@@ -14,7 +14,7 @@ export function DiskChart({ data }: DiskChartProps) {
   }
 
   const chartData = data.map((d) => ({
-    mount: d.mount,
+    mount: d.fs ? `${d.mount} (${d.fs})` : d.mount,
     used: d.used,
     free: d.free,
     total: d.total,

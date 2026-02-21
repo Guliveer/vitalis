@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,9 +85,12 @@ export function MachineMetricsView({ machineId }: MachineMetricsViewProps) {
     [machineId],
   );
 
-  useEffect(() => {
-    fetchMetrics(selectedRange);
-  }, [selectedRange, fetchMetrics]);
+  usePolling(
+    useCallback(() => {
+      fetchMetrics(selectedRange);
+    }, [fetchMetrics, selectedRange]),
+    30_000,
+  );
 
   const latestMetric = metrics.length > 0 ? metrics[0] : null;
   const latestProcesses: ProcessEntry[] = latestMetric?.processes && Array.isArray(latestMetric.processes) ? latestMetric.processes : [];

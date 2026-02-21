@@ -1,0 +1,17 @@
+# Generic embedded config for downloadable agent binaries.
+# Server URL and token are provided via an external agent.yaml file
+# that is bundled with the download package.
+server:
+  url: ""
+  machine_token: ""
+
+collection:
+  interval: "15s"
+  batch_interval: "30s"
+  top_processes: 10
+
+buffer:
+  max_size_mb: 50
+
+logging:
+  level: "info"

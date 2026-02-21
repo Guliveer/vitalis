@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent download binaries (tracked — served by the web app)
+# These are committed by the build-agent workflow
+!public/downloads/vitalis-agent-*

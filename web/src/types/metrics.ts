@@ -13,6 +13,7 @@ export type MetricDaily = InferSelectModel<typeof metricsDaily>;
 
 export interface DiskUsageEntry {
   mount: string;
+  fs?: string;
   total: number;
   used: number;
   free: number;
