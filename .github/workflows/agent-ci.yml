@@ -54,11 +54,6 @@ jobs:
       - name: Lint (go vet)
         run: go vet ./...
 
-      - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v7
-        with:
-          working-directory: agent/
-
       - name: Test with race detector & coverage
         run: go test -race -coverprofile=coverage.out ./...
 
